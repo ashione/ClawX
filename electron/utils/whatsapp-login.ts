@@ -1,20 +1,34 @@
-import { join, resolve } from 'path';
+import { dirname, join } from 'path';
 import { homedir } from 'os';
 import { createRequire } from 'module';
-import { app } from 'electron';
 import { EventEmitter } from 'events';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { deflateSync } from 'zlib';
+import { getOpenClawDir, getOpenClawResolvedDir } from './paths';
 
 const require = createRequire(import.meta.url);
 
-// Resolve paths to dependencies in openclaw/node_modules
-const openclawPath = app.isPackaged
-    ? join(process.resourcesPath, 'openclaw')
-    : resolve(__dirname, '../../openclaw');
+// Resolve dependencies from OpenClaw package context (pnpm-safe)
+const openclawPath = getOpenClawDir();
+const openclawResolvedPath = getOpenClawResolvedDir();
+const openclawRequire = createRequire(join(openclawResolvedPath, 'package.json'));
 
-const baileysPath = resolve(openclawPath, 'node_modules', '@whiskeysockets', 'baileys');
-const qrcodeTerminalPath = resolve(openclawPath, 'node_modules', 'qrcode-terminal');
+function resolveOpenClawPackageJson(packageName: string): string {
+    const specifier = `${packageName}/package.json`;
+    try {
+        return openclawRequire.resolve(specifier);
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(
+            `Failed to resolve "${packageName}" from OpenClaw context. ` +
+            `openclawPath=${openclawPath}, resolvedPath=${openclawResolvedPath}. ${reason}`,
+            { cause: err }
+        );
+    }
+}
+
+const baileysPath = dirname(resolveOpenClawPackageJson('@whiskeysockets/baileys'));
+const qrcodeTerminalPath = dirname(resolveOpenClawPackageJson('qrcode-terminal'));
 
 // Load Baileys dependencies dynamically
 const {

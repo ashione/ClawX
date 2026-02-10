@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { getOpenClawResolvedDir } from './paths';
 
 const OPENCLAW_DIR = join(homedir(), '.openclaw');
 const CONFIG_FILE = join(OPENCLAW_DIR, 'openclaw.json');
@@ -494,8 +495,6 @@ async function validateTelegramCredentials(
  */
 export async function validateChannelConfig(channelType: string): Promise<ValidationResult> {
     const { execSync } = await import('child_process');
-    const { join } = await import('path');
-    const { app } = await import('electron');
 
     const result: ValidationResult = {
         valid: true,
@@ -505,9 +504,7 @@ export async function validateChannelConfig(channelType: string): Promise<Valida
 
     try {
         // Get OpenClaw path
-        const openclawPath = app.isPackaged
-            ? join(process.resourcesPath, 'openclaw')
-            : join(__dirname, '../../openclaw');
+        const openclawPath = getOpenClawResolvedDir();
 
         // Run openclaw doctor command to validate config
         const output = execSync(

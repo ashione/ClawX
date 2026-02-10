@@ -5,7 +5,7 @@
 import { app } from 'electron';
 import { join } from 'path';
 import { homedir } from 'os';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync } from 'fs';
 import { logger } from './logger';
 
 /**
@@ -83,6 +83,22 @@ export function getOpenClawDir(): string {
   }
   // Development: use node_modules/openclaw
   return join(__dirname, '../../node_modules/openclaw');
+}
+
+/**
+ * Get OpenClaw package directory resolved to a real path.
+ * Useful when consumers need deterministic module resolution under pnpm symlinks.
+ */
+export function getOpenClawResolvedDir(): string {
+  const dir = getOpenClawDir();
+  if (!existsSync(dir)) {
+    return dir;
+  }
+  try {
+    return realpathSync(dir);
+  } catch {
+    return dir;
+  }
 }
 
 /**
