@@ -54,7 +54,6 @@ export function Dashboard() {
   const isGatewayRunning = gatewayStatus.state === 'running';
   const [uptime, setUptime] = useState(0);
   const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>([]);
-  const [usageLoading, setUsageLoading] = useState(false);
   const [usageGroupBy, setUsageGroupBy] = useState<UsageGroupBy>('model');
   const [usageWindow, setUsageWindow] = useState<UsageWindow>('7d');
   const [usagePage, setUsagePage] = useState(1);
@@ -64,7 +63,6 @@ export function Dashboard() {
     if (isGatewayRunning) {
       fetchChannels();
       fetchSkills();
-      setUsageLoading(true);
       window.electron.ipcRenderer.invoke('usage:recentTokenHistory', 60)
         .then((entries) => {
           setUsageHistory(Array.isArray(entries) ? entries as typeof usageHistory : []);
@@ -72,28 +70,21 @@ export function Dashboard() {
         })
         .catch(() => {
           setUsageHistory([]);
-        })
-        .finally(() => {
-          setUsageLoading(false);
         });
-    } else {
-      setUsageHistory([]);
     }
   }, [fetchChannels, fetchSkills, isGatewayRunning]);
 
   // Calculate statistics safely
   const connectedChannels = Array.isArray(channels) ? channels.filter((c) => c.status === 'connected').length : 0;
   const enabledSkills = Array.isArray(skills) ? skills.filter((s) => s.enabled).length : 0;
-  const filteredUsageHistory = filterUsageHistoryByWindow(usageHistory, usageWindow);
+  const visibleUsageHistory = isGatewayRunning ? usageHistory : [];
+  const filteredUsageHistory = filterUsageHistoryByWindow(visibleUsageHistory, usageWindow);
   const usageGroups = groupUsageHistory(filteredUsageHistory, usageGroupBy);
   const usagePageSize = 5;
   const usageTotalPages = Math.max(1, Math.ceil(filteredUsageHistory.length / usagePageSize));
   const safeUsagePage = Math.min(usagePage, usageTotalPages);
   const pagedUsageHistory = filteredUsageHistory.slice((safeUsagePage - 1) * usagePageSize, safeUsagePage * usagePageSize);
-
-  useEffect(() => {
-    setUsagePage(1);
-  }, [usageGroupBy, usageWindow, usageHistory.length]);
+  const usageLoading = isGatewayRunning && visibleUsageHistory.length === 0;
 
   // Update uptime periodically
   useEffect(() => {
@@ -332,7 +323,7 @@ export function Dashboard() {
         <CardContent>
           {usageLoading ? (
             <div className="text-center py-8 text-muted-foreground">{t('recentTokenHistory.loading')}</div>
-          ) : usageHistory.length === 0 ? (
+          ) : visibleUsageHistory.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Coins className="h-8 w-8 mx-auto mb-2 opacity-50" />
               <p>{t('recentTokenHistory.empty')}</p>
@@ -350,14 +341,20 @@ export function Dashboard() {
                     <Button
                       variant={usageGroupBy === 'model' ? 'secondary' : 'ghost'}
                       size="sm"
-                      onClick={() => setUsageGroupBy('model')}
+                      onClick={() => {
+                        setUsageGroupBy('model');
+                        setUsagePage(1);
+                      }}
                     >
                       {t('recentTokenHistory.groupByModel')}
                     </Button>
                     <Button
                       variant={usageGroupBy === 'day' ? 'secondary' : 'ghost'}
                       size="sm"
-                      onClick={() => setUsageGroupBy('day')}
+                      onClick={() => {
+                        setUsageGroupBy('day');
+                        setUsagePage(1);
+                      }}
                     >
                       {t('recentTokenHistory.groupByTime')}
                     </Button>
@@ -366,21 +363,30 @@ export function Dashboard() {
                     <Button
                       variant={usageWindow === '7d' ? 'secondary' : 'ghost'}
                       size="sm"
-                      onClick={() => setUsageWindow('7d')}
+                      onClick={() => {
+                        setUsageWindow('7d');
+                        setUsagePage(1);
+                      }}
                     >
                       {t('recentTokenHistory.last7Days')}
                     </Button>
                     <Button
                       variant={usageWindow === '30d' ? 'secondary' : 'ghost'}
                       size="sm"
-                      onClick={() => setUsageWindow('30d')}
+                      onClick={() => {
+                        setUsageWindow('30d');
+                        setUsagePage(1);
+                      }}
                     >
                       {t('recentTokenHistory.last30Days')}
                     </Button>
                     <Button
                       variant={usageWindow === 'all' ? 'secondary' : 'ghost'}
                       size="sm"
-                      onClick={() => setUsageWindow('all')}
+                      onClick={() => {
+                        setUsageWindow('all');
+                        setUsagePage(1);
+                      }}
                     >
                       {t('recentTokenHistory.allTime')}
                     </Button>

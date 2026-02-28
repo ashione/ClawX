@@ -96,44 +96,41 @@ export function parseUsageEntriesFromJsonl(
 async function listRecentSessionFiles(): Promise<Array<{ filePath: string; sessionId: string; agentId: string; mtimeMs: number }>> {
   const openclawDir = getOpenClawConfigDir();
   const agentsDir = join(openclawDir, 'agents');
-  let agentEntries: string[] = [];
 
   try {
-    agentEntries = await readdir(agentsDir);
-  } catch {
-    return [];
-  }
+    const agentEntries = await readdir(agentsDir);
+    const files: Array<{ filePath: string; sessionId: string; agentId: string; mtimeMs: number }> = [];
 
-  const files: Array<{ filePath: string; sessionId: string; agentId: string; mtimeMs: number }> = [];
-
-  for (const agentId of agentEntries) {
-    const sessionsDir = join(agentsDir, agentId, 'sessions');
-    let sessionEntries: string[] = [];
-    try {
-      sessionEntries = await readdir(sessionsDir);
-    } catch {
-      continue;
-    }
-
-    for (const fileName of sessionEntries) {
-      if (!fileName.endsWith('.jsonl') || fileName.includes('.deleted.')) continue;
-      const filePath = join(sessionsDir, fileName);
+    for (const agentId of agentEntries) {
+      const sessionsDir = join(agentsDir, agentId, 'sessions');
       try {
-        const fileStat = await stat(filePath);
-        files.push({
-          filePath,
-          sessionId: fileName.replace(/\.jsonl$/, ''),
-          agentId,
-          mtimeMs: fileStat.mtimeMs,
-        });
+        const sessionEntries = await readdir(sessionsDir);
+
+        for (const fileName of sessionEntries) {
+          if (!fileName.endsWith('.jsonl') || fileName.includes('.deleted.')) continue;
+          const filePath = join(sessionsDir, fileName);
+          try {
+            const fileStat = await stat(filePath);
+            files.push({
+              filePath,
+              sessionId: fileName.replace(/\.jsonl$/, ''),
+              agentId,
+              mtimeMs: fileStat.mtimeMs,
+            });
+          } catch {
+            continue;
+          }
+        }
       } catch {
         continue;
       }
     }
-  }
 
-  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return files;
+    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return files;
+  } catch {
+    return [];
+  }
 }
 
 export async function getRecentTokenUsageHistory(limit = 20): Promise<TokenUsageHistoryEntry[]> {
