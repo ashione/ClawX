@@ -32,6 +32,9 @@ export interface AppSettings {
   gatewayToken: string;
   proxyEnabled: boolean;
   proxyServer: string;
+  proxyHttpServer: string;
+  proxyHttpsServer: string;
+  proxyAllServer: string;
   proxyBypassRules: string;
   
   // Update
@@ -66,6 +69,9 @@ const defaults: AppSettings = {
   gatewayToken: generateToken(),
   proxyEnabled: false,
   proxyServer: '',
+  proxyHttpServer: '',
+  proxyHttpsServer: '',
+  proxyAllServer: '',
   proxyBypassRules: '<local>;localhost;127.0.0.1;::1',
   
   // Update

@@ -160,24 +160,23 @@ ClawX includes built-in proxy settings for environments where Electron, the Open
 
 Open **Settings → Gateway → Proxy** and configure:
 
-- **Proxy Server**: supports `http://`, `https://`, `socks4://`, and `socks5://`
+- **Proxy Server**: the default proxy for all requests
 - **Bypass Rules**: hosts that should connect directly, separated by semicolons, commas, or new lines
+- In **Developer Mode**, you can optionally override:
+  - **HTTP Proxy**
+  - **HTTPS Proxy**
+  - **ALL_PROXY / SOCKS**
 
 Recommended local examples:
 
 ```text
-http://127.0.0.1:7890
-```
-
-or
-
-```text
-socks5://127.0.0.1:7891
+Proxy Server: http://127.0.0.1:7890
 ```
 
 Notes:
 
 - A bare `host:port` value is treated as HTTP.
+- If advanced proxy fields are left empty, ClawX falls back to `Proxy Server`.
 - Saving proxy settings reapplies Electron networking immediately and restarts the Gateway automatically.
 - ClawX also syncs the proxy to OpenClaw's Telegram channel config when Telegram is enabled.
 

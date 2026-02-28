@@ -21,6 +21,9 @@ interface SettingsState {
   gatewayPort: number;
   proxyEnabled: boolean;
   proxyServer: string;
+  proxyHttpServer: string;
+  proxyHttpsServer: string;
+  proxyAllServer: string;
   proxyBypassRules: string;
 
   // Update
@@ -45,6 +48,9 @@ interface SettingsState {
   setGatewayPort: (port: number) => void;
   setProxyEnabled: (value: boolean) => void;
   setProxyServer: (value: string) => void;
+  setProxyHttpServer: (value: string) => void;
+  setProxyHttpsServer: (value: string) => void;
+  setProxyAllServer: (value: string) => void;
   setProxyBypassRules: (value: string) => void;
   setUpdateChannel: (channel: UpdateChannel) => void;
   setAutoCheckUpdate: (value: boolean) => void;
@@ -69,6 +75,9 @@ const defaultSettings = {
   gatewayPort: 18789,
   proxyEnabled: false,
   proxyServer: '',
+  proxyHttpServer: '',
+  proxyHttpsServer: '',
+  proxyAllServer: '',
   proxyBypassRules: '<local>;localhost;127.0.0.1;::1',
   updateChannel: 'stable' as UpdateChannel,
   autoCheckUpdate: true,
@@ -104,6 +113,9 @@ export const useSettingsStore = create<SettingsState>()(
       setGatewayPort: (gatewayPort) => { set({ gatewayPort }); void window.electron.ipcRenderer.invoke('settings:set', 'gatewayPort', gatewayPort).catch(() => {}); },
       setProxyEnabled: (proxyEnabled) => set({ proxyEnabled }),
       setProxyServer: (proxyServer) => set({ proxyServer }),
+      setProxyHttpServer: (proxyHttpServer) => set({ proxyHttpServer }),
+      setProxyHttpsServer: (proxyHttpsServer) => set({ proxyHttpsServer }),
+      setProxyAllServer: (proxyAllServer) => set({ proxyAllServer }),
       setProxyBypassRules: (proxyBypassRules) => set({ proxyBypassRules }),
       setUpdateChannel: (updateChannel) => set({ updateChannel }),
       setAutoCheckUpdate: (autoCheckUpdate) => set({ autoCheckUpdate }),

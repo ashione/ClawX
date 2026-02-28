@@ -1,5 +1,5 @@
 import { readOpenClawConfig, writeOpenClawConfig } from './channel-config';
-import { normalizeProxyServer, type ProxySettings } from './proxy';
+import { resolveProxySettings, type ProxySettings } from './proxy';
 import { logger } from './logger';
 
 /**
@@ -14,7 +14,10 @@ export async function syncProxyConfigToOpenClaw(settings: ProxySettings): Promis
     return;
   }
 
-  const nextProxy = settings.proxyEnabled ? normalizeProxyServer(settings.proxyServer) : '';
+  const resolved = resolveProxySettings(settings);
+  const nextProxy = settings.proxyEnabled
+    ? (resolved.allProxy || resolved.httpsProxy || resolved.httpProxy)
+    : '';
   const currentProxy = typeof telegramConfig.proxy === 'string' ? telegramConfig.proxy : '';
 
   if (!nextProxy && !currentProxy) {

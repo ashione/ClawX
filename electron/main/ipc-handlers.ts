@@ -1776,7 +1776,14 @@ function registerSettingsHandlers(gatewayManager: GatewayManager): void {
   ipcMain.handle('settings:set', async (_, key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
     await setSetting(key, value as never);
 
-    if (key === 'proxyEnabled' || key === 'proxyServer' || key === 'proxyBypassRules') {
+    if (
+      key === 'proxyEnabled' ||
+      key === 'proxyServer' ||
+      key === 'proxyHttpServer' ||
+      key === 'proxyHttpsServer' ||
+      key === 'proxyAllServer' ||
+      key === 'proxyBypassRules'
+    ) {
       await handleProxySettingsChange();
     }
 
@@ -1789,7 +1796,14 @@ function registerSettingsHandlers(gatewayManager: GatewayManager): void {
       await setSetting(key, value as never);
     }
 
-    if (entries.some(([key]) => key === 'proxyEnabled' || key === 'proxyServer' || key === 'proxyBypassRules')) {
+    if (entries.some(([key]) =>
+      key === 'proxyEnabled' ||
+      key === 'proxyServer' ||
+      key === 'proxyHttpServer' ||
+      key === 'proxyHttpsServer' ||
+      key === 'proxyAllServer' ||
+      key === 'proxyBypassRules'
+    )) {
       await handleProxySettingsChange();
     }
 

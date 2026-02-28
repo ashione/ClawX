@@ -47,9 +47,15 @@ export function Settings() {
     setGatewayAutoStart,
     proxyEnabled,
     proxyServer,
+    proxyHttpServer,
+    proxyHttpsServer,
+    proxyAllServer,
     proxyBypassRules,
     setProxyEnabled,
     setProxyServer,
+    setProxyHttpServer,
+    setProxyHttpsServer,
+    setProxyAllServer,
     setProxyBypassRules,
     autoCheckUpdate,
     setAutoCheckUpdate,
@@ -66,6 +72,9 @@ export function Settings() {
   const [openclawCliCommand, setOpenclawCliCommand] = useState('');
   const [openclawCliError, setOpenclawCliError] = useState<string | null>(null);
   const [proxyServerDraft, setProxyServerDraft] = useState('');
+  const [proxyHttpServerDraft, setProxyHttpServerDraft] = useState('');
+  const [proxyHttpsServerDraft, setProxyHttpsServerDraft] = useState('');
+  const [proxyAllServerDraft, setProxyAllServerDraft] = useState('');
   const [proxyBypassRulesDraft, setProxyBypassRulesDraft] = useState('');
   const [proxyEnabledDraft, setProxyEnabledDraft] = useState(false);
   const [savingProxy, setSavingProxy] = useState(false);
@@ -203,21 +212,42 @@ export function Settings() {
   }, [proxyServer]);
 
   useEffect(() => {
+    setProxyHttpServerDraft(proxyHttpServer);
+  }, [proxyHttpServer]);
+
+  useEffect(() => {
+    setProxyHttpsServerDraft(proxyHttpsServer);
+  }, [proxyHttpsServer]);
+
+  useEffect(() => {
+    setProxyAllServerDraft(proxyAllServer);
+  }, [proxyAllServer]);
+
+  useEffect(() => {
     setProxyBypassRulesDraft(proxyBypassRules);
   }, [proxyBypassRules]);
 
   const handleSaveProxySettings = async () => {
     setSavingProxy(true);
     try {
-      const normalizedServer = proxyServerDraft.trim();
+      const normalizedProxyServer = proxyServerDraft.trim();
+      const normalizedHttpServer = proxyHttpServerDraft.trim();
+      const normalizedHttpsServer = proxyHttpsServerDraft.trim();
+      const normalizedAllServer = proxyAllServerDraft.trim();
       const normalizedBypassRules = proxyBypassRulesDraft.trim();
       await window.electron.ipcRenderer.invoke('settings:setMany', {
         proxyEnabled: proxyEnabledDraft,
-        proxyServer: normalizedServer,
+        proxyServer: normalizedProxyServer,
+        proxyHttpServer: normalizedHttpServer,
+        proxyHttpsServer: normalizedHttpsServer,
+        proxyAllServer: normalizedAllServer,
         proxyBypassRules: normalizedBypassRules,
       });
 
-      setProxyServer(normalizedServer);
+      setProxyServer(normalizedProxyServer);
+      setProxyHttpServer(normalizedHttpServer);
+      setProxyHttpsServer(normalizedHttpsServer);
+      setProxyAllServer(normalizedAllServer);
       setProxyBypassRules(normalizedBypassRules);
       setProxyEnabled(proxyEnabledDraft);
 
@@ -400,12 +430,55 @@ export function Settings() {
                 id="proxy-server"
                 value={proxyServerDraft}
                 onChange={(event) => setProxyServerDraft(event.target.value)}
-                placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:7891"
+                placeholder="http://127.0.0.1:7890"
               />
               <p className="text-xs text-muted-foreground">
                 {t('gateway.proxyServerHelp')}
               </p>
             </div>
+
+            {devModeUnlocked && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="proxy-http-server">{t('gateway.proxyHttpServer')}</Label>
+                  <Input
+                    id="proxy-http-server"
+                    value={proxyHttpServerDraft}
+                    onChange={(event) => setProxyHttpServerDraft(event.target.value)}
+                    placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('gateway.proxyHttpServerHelp')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="proxy-https-server">{t('gateway.proxyHttpsServer')}</Label>
+                  <Input
+                    id="proxy-https-server"
+                    value={proxyHttpsServerDraft}
+                    onChange={(event) => setProxyHttpsServerDraft(event.target.value)}
+                    placeholder={proxyServerDraft || 'http://127.0.0.1:7890'}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('gateway.proxyHttpsServerHelp')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="proxy-all-server">{t('gateway.proxyAllServer')}</Label>
+                  <Input
+                    id="proxy-all-server"
+                    value={proxyAllServerDraft}
+                    onChange={(event) => setProxyAllServerDraft(event.target.value)}
+                    placeholder={proxyServerDraft || 'socks5://127.0.0.1:7891'}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('gateway.proxyAllServerHelp')}
+                  </p>
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="proxy-bypass">{t('gateway.proxyBypass')}</Label>
