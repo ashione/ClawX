@@ -356,9 +356,10 @@ function ProviderCard({
 
         {/* Key row */}
         {isEditing ? (
-          <div className="space-y-2">
+          <div className="space-y-4">
             {canEditModelConfig && (
-              <>
+              <div className="space-y-3 rounded-md border p-3">
+                <p className="text-sm font-medium">{t('aiProviders.sections.model')}</p>
                 {typeInfo?.showBaseUrl && (
                   <div className="space-y-1">
                     <Label className="text-xs">{t('aiProviders.dialog.baseUrl')}</Label>
@@ -381,96 +382,120 @@ function ProviderCard({
                     />
                   </div>
                 )}
-              </>
+              </div>
             )}
-            <div className="space-y-1">
-              <Label className="text-xs">{t('aiProviders.dialog.fallbackModelIds')}</Label>
-              <textarea
-                value={fallbackModelsText}
-                onChange={(e) => setFallbackModelsText(e.target.value)}
-                placeholder={t('aiProviders.dialog.fallbackModelIdsPlaceholder')}
-                className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-              />
-              <p className="text-xs text-muted-foreground">
-                {t('aiProviders.dialog.fallbackModelIdsHelp')}
-              </p>
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">{t('aiProviders.sections.fallback')}</p>
+              <div className="space-y-1">
+                <Label className="text-xs">{t('aiProviders.dialog.fallbackModelIds')}</Label>
+                <textarea
+                  value={fallbackModelsText}
+                  onChange={(e) => setFallbackModelsText(e.target.value)}
+                  placeholder={t('aiProviders.dialog.fallbackModelIdsPlaceholder')}
+                  className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('aiProviders.dialog.fallbackModelIdsHelp')}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">{t('aiProviders.dialog.fallbackProviders')}</Label>
+                {fallbackOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t('aiProviders.dialog.noFallbackOptions')}</p>
+                ) : (
+                  <div className="space-y-2 rounded-md border p-2">
+                    {fallbackOptions.map((candidate) => (
+                      <label key={candidate.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={fallbackProviderIds.includes(candidate.id)}
+                          onChange={() => toggleFallbackProvider(candidate.id)}
+                        />
+                        <span className="font-medium">{candidate.name}</span>
+                        <span className="text-xs text-muted-foreground">{candidate.model || candidate.type}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs">{t('aiProviders.dialog.fallbackModels')}</Label>
-              {fallbackOptions.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{t('aiProviders.dialog.noFallbackOptions')}</p>
-              ) : (
-                <div className="space-y-2 rounded-md border p-2">
-                  {fallbackOptions.map((candidate) => (
-                    <label key={candidate.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={fallbackProviderIds.includes(candidate.id)}
-                        onChange={() => toggleFallbackProvider(candidate.id)}
-                      />
-                      <span className="font-medium">{candidate.name}</span>
-                      <span className="text-xs text-muted-foreground">{candidate.model || candidate.type}</span>
-                    </label>
-                  ))}
+            <div className="space-y-3 rounded-md border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">{t('aiProviders.dialog.apiKey')}</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {provider.hasKey
+                      ? t('aiProviders.dialog.apiKeyConfigured')
+                      : t('aiProviders.dialog.apiKeyMissing')}
+                  </p>
+                </div>
+                {provider.hasKey ? (
+                  <Badge variant="secondary">{t('aiProviders.card.configured')}</Badge>
+                ) : null}
+              </div>
+              {typeInfo?.apiKeyUrl && (
+                <div className="flex justify-start">
+                  <a
+                    href={typeInfo.apiKeyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                    tabIndex={-1}
+                  >
+                    {t('aiProviders.oauth.getApiKey')} <ExternalLink className="h-3 w-3" />
+                  </a>
                 </div>
               )}
-            </div>
-            {typeInfo?.apiKeyUrl && (
-              <div className="flex justify-start mb-1">
-                <a
-                  href={typeInfo.apiKeyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline flex items-center gap-1"
-                  tabIndex={-1}
-                >
-                  {t('aiProviders.oauth.getApiKey')} <ExternalLink className="h-3 w-3" />
-                </a>
+              <div className="space-y-1">
+                <Label className="text-xs">{t('aiProviders.dialog.replaceApiKey')}</Label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type={showKey ? 'text' : 'password'}
+                      placeholder={typeInfo?.requiresApiKey ? typeInfo?.placeholder : (typeInfo?.id === 'ollama' ? t('aiProviders.notRequired') : t('aiProviders.card.editKey'))}
+                      value={newKey}
+                      onChange={(e) => setNewKey(e.target.value)}
+                      className="pr-10 h-9 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey(!showKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveEdits}
+                    disabled={
+                      validating
+                      || saving
+                      || (
+                        !newKey.trim()
+                        && (baseUrl.trim() || undefined) === (provider.baseUrl || undefined)
+                        && (modelId.trim() || undefined) === (provider.model || undefined)
+                        && fallbackModelsEqual(normalizeFallbackModels(fallbackModelsText.split('\n')), provider.fallbackModels)
+                        && fallbackProviderIdsEqual(fallbackProviderIds, provider.fallbackProviderIds)
+                      )
+                      || Boolean(typeInfo?.showModelId && !modelId.trim())
+                    }
+                  >
+                    {validating || saving ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={onCancelEdit}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('aiProviders.dialog.replaceApiKeyHelp')}
+                </p>
               </div>
-            )}
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  type={showKey ? 'text' : 'password'}
-                  placeholder={typeInfo?.requiresApiKey ? typeInfo?.placeholder : (typeInfo?.id === 'ollama' ? t('aiProviders.notRequired') : t('aiProviders.card.editKey'))}
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  className="pr-10 h-9 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveEdits}
-                disabled={
-                  validating
-                  || saving
-                  || (
-                    !newKey.trim()
-                    && (baseUrl.trim() || undefined) === (provider.baseUrl || undefined)
-                    && (modelId.trim() || undefined) === (provider.model || undefined)
-                    && fallbackModelsEqual(normalizeFallbackModels(fallbackModelsText.split('\n')), provider.fallbackModels)
-                    && fallbackProviderIdsEqual(fallbackProviderIds, provider.fallbackProviderIds)
-                  )
-                  || Boolean(typeInfo?.showModelId && !modelId.trim())
-                }
-              >
-                {validating || saving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Check className="h-3.5 w-3.5" />
-                )}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onCancelEdit}>
-                <X className="h-3.5 w-3.5" />
-              </Button>
             </div>
           </div>
         ) : (
