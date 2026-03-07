@@ -26,6 +26,7 @@ import { useSkillsStore } from '@/stores/skills';
 import { useSettingsStore } from '@/stores/settings';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { useTranslation } from 'react-i18next';
+import { hostApiFetch } from '@/lib/host-api';
 
 type UsageHistoryEntry = {
   timestamp: string;
@@ -63,7 +64,7 @@ export function Dashboard() {
     if (isGatewayRunning) {
       fetchChannels();
       fetchSkills();
-      window.electron.ipcRenderer.invoke('usage:recentTokenHistory')
+      hostApiFetch('/api/usage/recent-token-history')
         .then((entries) => {
           setUsageHistory(Array.isArray(entries) ? entries as typeof usageHistory : []);
           setUsagePage(1);
@@ -107,11 +108,11 @@ export function Dashboard() {
 
   const openDevConsole = async () => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('gateway:getControlUiUrl') as {
+      const result = await hostApiFetch<{
         success: boolean;
         url?: string;
         error?: string;
-      };
+      }>('/api/gateway/control-ui');
       if (result.success && result.url) {
         window.electron.openExternal(result.url);
       } else {

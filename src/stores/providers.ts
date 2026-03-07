@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand';
 import type { ProviderConfig, ProviderWithKeyInfo } from '@/lib/providers';
+import { hostApiFetch } from '@/lib/host-api';
 
 // Re-export types for consumers that imported from here
 export type { ProviderConfig, ProviderWithKeyInfo } from '@/lib/providers';
@@ -45,12 +46,12 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
     set({ loading: true, error: null });
     
     try {
-      const providers = await window.electron.ipcRenderer.invoke('provider:list') as ProviderWithKeyInfo[];
-      const defaultId = await window.electron.ipcRenderer.invoke('provider:getDefault') as string | null;
+      const providers = await hostApiFetch<ProviderWithKeyInfo[]>('/api/providers');
+      const defaultInfo = await hostApiFetch<{ providerId: string | null }>('/api/providers/default');
       
       set({ 
         providers, 
-        defaultProviderId: defaultId,
+        defaultProviderId: defaultInfo.providerId,
         loading: false 
       });
     } catch (error) {
@@ -66,7 +67,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         updatedAt: new Date().toISOString(),
       };
       
-      const result = await window.electron.ipcRenderer.invoke('provider:save', fullConfig, apiKey) as { success: boolean; error?: string };
+      const result = await hostApiFetch<{ success: boolean; error?: string }>('/api/providers', {
+        method: 'POST',
+        body: JSON.stringify({ config: fullConfig, apiKey }),
+      });
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to save provider');
@@ -95,7 +99,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
         updatedAt: new Date().toISOString(),
       };
       
-      const result = await window.electron.ipcRenderer.invoke('provider:save', updatedConfig, apiKey) as { success: boolean; error?: string };
+      const result = await hostApiFetch<{ success: boolean; error?: string }>(`/api/providers/${encodeURIComponent(providerId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ updates: updatedConfig, apiKey }),
+      });
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to update provider');
@@ -111,7 +118,9 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   
   deleteProvider: async (providerId) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('provider:delete', providerId) as { success: boolean; error?: string };
+      const result = await hostApiFetch<{ success: boolean; error?: string }>(`/api/providers/${encodeURIComponent(providerId)}`, {
+        method: 'DELETE',
+      });
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to delete provider');
@@ -127,7 +136,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   
   setApiKey: async (providerId, apiKey) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('provider:setApiKey', providerId, apiKey) as { success: boolean; error?: string };
+      const result = await hostApiFetch<{ success: boolean; error?: string }>(`/api/providers/${encodeURIComponent(providerId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ updates: {}, apiKey }),
+      });
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to set API key');
@@ -143,12 +155,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
 
   updateProviderWithKey: async (providerId, updates, apiKey) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke(
-        'provider:updateWithKey',
-        providerId,
-        updates,
-        apiKey
-      ) as { success: boolean; error?: string };
+      const result = await hostApiFetch<{ success: boolean; error?: string }>(`/api/providers/${encodeURIComponent(providerId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ updates, apiKey }),
+      });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to update provider');
@@ -163,7 +173,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   
   deleteApiKey: async (providerId) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('provider:deleteApiKey', providerId) as { success: boolean; error?: string };
+      const result = await hostApiFetch<{ success: boolean; error?: string }>(
+        `/api/providers/${encodeURIComponent(providerId)}?apiKeyOnly=1`,
+        { method: 'DELETE' },
+      );
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to delete API key');
@@ -179,7 +192,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   
   setDefaultProvider: async (providerId) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('provider:setDefault', providerId) as { success: boolean; error?: string };
+      const result = await hostApiFetch<{ success: boolean; error?: string }>('/api/providers/default', {
+        method: 'PUT',
+        body: JSON.stringify({ providerId }),
+      });
       
       if (!result.success) {
         throw new Error(result.error || 'Failed to set default provider');
@@ -194,12 +210,10 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   
   validateApiKey: async (providerId, apiKey, options) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke(
-        'provider:validateKey',
-        providerId,
-        apiKey,
-        options
-      ) as { valid: boolean; error?: string };
+      const result = await hostApiFetch<{ valid: boolean; error?: string }>('/api/providers/validate', {
+        method: 'POST',
+        body: JSON.stringify({ providerId, apiKey, options }),
+      });
       return result;
     } catch (error) {
       return { valid: false, error: String(error) };
@@ -208,7 +222,8 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   
   getApiKey: async (providerId) => {
     try {
-      return await window.electron.ipcRenderer.invoke('provider:getApiKey', providerId) as string | null;
+      const result = await hostApiFetch<{ apiKey: string | null }>(`/api/providers/${encodeURIComponent(providerId)}/api-key`);
+      return result.apiKey;
     } catch {
       return null;
     }

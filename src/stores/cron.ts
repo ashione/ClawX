@@ -3,6 +3,7 @@
  * Manages scheduled task state
  */
 import { create } from 'zustand';
+import { hostApiFetch } from '@/lib/host-api';
 import type { CronJob, CronJobCreateInput, CronJobUpdateInput } from '../types/cron';
 
 interface CronState {
@@ -29,7 +30,7 @@ export const useCronStore = create<CronState>((set) => ({
     set({ loading: true, error: null });
     
     try {
-      const result = await window.electron.ipcRenderer.invoke('cron:list') as CronJob[];
+      const result = await hostApiFetch<CronJob[]>('/api/cron/jobs');
       set({ jobs: result, loading: false });
     } catch (error) {
       set({ error: String(error), loading: false });
@@ -38,7 +39,10 @@ export const useCronStore = create<CronState>((set) => ({
   
   createJob: async (input) => {
     try {
-      const job = await window.electron.ipcRenderer.invoke('cron:create', input) as CronJob;
+      const job = await hostApiFetch<CronJob>('/api/cron/jobs', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
       set((state) => ({ jobs: [...state.jobs, job] }));
       return job;
     } catch (error) {
@@ -49,7 +53,10 @@ export const useCronStore = create<CronState>((set) => ({
   
   updateJob: async (id, input) => {
     try {
-      await window.electron.ipcRenderer.invoke('cron:update', id, input);
+      await hostApiFetch(`/api/cron/jobs/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      });
       set((state) => ({
         jobs: state.jobs.map((job) =>
           job.id === id ? { ...job, ...input, updatedAt: new Date().toISOString() } : job
@@ -63,7 +70,9 @@ export const useCronStore = create<CronState>((set) => ({
   
   deleteJob: async (id) => {
     try {
-      await window.electron.ipcRenderer.invoke('cron:delete', id);
+      await hostApiFetch(`/api/cron/jobs/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
       set((state) => ({
         jobs: state.jobs.filter((job) => job.id !== id),
       }));
@@ -75,7 +84,10 @@ export const useCronStore = create<CronState>((set) => ({
   
   toggleJob: async (id, enabled) => {
     try {
-      await window.electron.ipcRenderer.invoke('cron:toggle', id, enabled);
+      await hostApiFetch('/api/cron/toggle', {
+        method: 'POST',
+        body: JSON.stringify({ id, enabled }),
+      });
       set((state) => ({
         jobs: state.jobs.map((job) =>
           job.id === id ? { ...job, enabled } : job
@@ -89,11 +101,14 @@ export const useCronStore = create<CronState>((set) => ({
   
   triggerJob: async (id) => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('cron:trigger', id);
+      const result = await hostApiFetch('/api/cron/trigger', {
+        method: 'POST',
+        body: JSON.stringify({ id }),
+      });
       console.log('Cron trigger result:', result);
       // Refresh jobs after trigger to update lastRun/nextRun state
       try {
-        const jobs = await window.electron.ipcRenderer.invoke('cron:list') as CronJob[];
+        const jobs = await hostApiFetch<CronJob[]>('/api/cron/jobs');
         set({ jobs });
       } catch {
         // Ignore refresh error

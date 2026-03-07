@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from 'react-i18next';
+import { hostApiFetch } from '@/lib/host-api';
 
 interface NavItemProps {
   to: string;
@@ -90,11 +91,11 @@ export function Sidebar() {
 
   const openDevConsole = async () => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('gateway:getControlUiUrl') as {
+      const result = await hostApiFetch<{
         success: boolean;
         url?: string;
         error?: string;
-      };
+      }>('/api/gateway/control-ui');
       if (result.success && result.url) {
         window.electron.openExternal(result.url);
       } else {

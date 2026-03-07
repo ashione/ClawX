@@ -41,6 +41,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Skill, MarketplaceSkill } from '@/types/skill';
 import { useTranslation } from 'react-i18next';
+import { hostApiFetch } from '@/lib/host-api';
 
 
 
@@ -91,7 +92,10 @@ function SkillDetailDialog({ skill, onClose, onToggle }: SkillDetailDialogProps)
   const handleOpenEditor = async () => {
     if (skill.slug) {
       try {
-        const result = await window.electron.ipcRenderer.invoke('clawhub:openSkillReadme', skill.slug) as { success: boolean; error?: string };
+        const result = await hostApiFetch<{ success: boolean; error?: string }>('/api/clawhub/open-readme', {
+          method: 'POST',
+          body: JSON.stringify({ slug: skill.slug }),
+        });
         if (result.success) {
           toast.success(t('toast.openedEditor'));
         } else {

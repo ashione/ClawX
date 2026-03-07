@@ -30,6 +30,7 @@ import { ProvidersSettings } from '@/components/settings/ProvidersSettings';
 import { UpdateSettings } from '@/components/settings/UpdateSettings';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
+import { hostApiFetch } from '@/lib/host-api';
 type ControlUiInfo = {
   url: string;
   token: string;
@@ -86,8 +87,8 @@ export function Settings() {
 
   const handleShowLogs = async () => {
     try {
-      const logs = await window.electron.ipcRenderer.invoke('log:readFile', 100) as string;
-      setLogContent(logs);
+      const logs = await hostApiFetch<{ content: string }>('/api/logs?tailLines=100');
+      setLogContent(logs.content);
       setShowLogs(true);
     } catch {
       setLogContent('(Failed to load logs)');
@@ -97,7 +98,7 @@ export function Settings() {
 
   const handleOpenLogDir = async () => {
     try {
-      const logDir = await window.electron.ipcRenderer.invoke('log:getDir') as string;
+      const { dir: logDir } = await hostApiFetch<{ dir: string | null }>('/api/logs/dir');
       if (logDir) {
         await window.electron.ipcRenderer.invoke('shell:showItemInFolder', logDir);
       }
@@ -109,13 +110,13 @@ export function Settings() {
   // Open developer console
   const openDevConsole = async () => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('gateway:getControlUiUrl') as {
+      const result = await hostApiFetch<{
         success: boolean;
         url?: string;
         token?: string;
         port?: number;
         error?: string;
-      };
+      }>('/api/gateway/control-ui');
       if (result.success && result.url && result.token && typeof result.port === 'number') {
         setControlUiInfo({ url: result.url, token: result.token, port: result.port });
         window.electron.openExternal(result.url);
@@ -129,12 +130,12 @@ export function Settings() {
 
   const refreshControlUiInfo = async () => {
     try {
-      const result = await window.electron.ipcRenderer.invoke('gateway:getControlUiUrl') as {
+      const result = await hostApiFetch<{
         success: boolean;
         url?: string;
         token?: string;
         port?: number;
-      };
+      }>('/api/gateway/control-ui');
       if (result.success && result.url && result.token && typeof result.port === 'number') {
         setControlUiInfo({ url: result.url, token: result.token, port: result.port });
       }
@@ -235,13 +236,16 @@ export function Settings() {
       const normalizedHttpsServer = proxyHttpsServerDraft.trim();
       const normalizedAllServer = proxyAllServerDraft.trim();
       const normalizedBypassRules = proxyBypassRulesDraft.trim();
-      await window.electron.ipcRenderer.invoke('settings:setMany', {
+      await hostApiFetch('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
         proxyEnabled: proxyEnabledDraft,
         proxyServer: normalizedProxyServer,
         proxyHttpServer: normalizedHttpServer,
         proxyHttpsServer: normalizedHttpsServer,
         proxyAllServer: normalizedAllServer,
         proxyBypassRules: normalizedBypassRules,
+        }),
       });
 
       setProxyServer(normalizedProxyServer);

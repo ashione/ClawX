@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n from '@/i18n';
+import { hostApiFetch } from '@/lib/host-api';
 
 type Theme = 'light' | 'dark' | 'system';
 type UpdateChannel = 'stable' | 'beta' | 'dev';
@@ -94,7 +95,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       init: async () => {
         try {
-          const settings = await window.electron.ipcRenderer.invoke('settings:getAll') as Partial<typeof defaultSettings>;
+          const settings = await hostApiFetch<Partial<typeof defaultSettings>>('/api/settings');
           set((state) => ({ ...state, ...settings }));
           if (settings.language) {
             i18n.changeLanguage(settings.language);
@@ -106,11 +107,30 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       setTheme: (theme) => set({ theme }),
-      setLanguage: (language) => { i18n.changeLanguage(language); set({ language }); void window.electron.ipcRenderer.invoke('settings:set', 'language', language).catch(() => {}); },
+      setLanguage: (language) => {
+        i18n.changeLanguage(language);
+        set({ language });
+        void hostApiFetch('/api/settings/language', {
+          method: 'PUT',
+          body: JSON.stringify({ value: language }),
+        }).catch(() => {});
+      },
       setStartMinimized: (startMinimized) => set({ startMinimized }),
       setLaunchAtStartup: (launchAtStartup) => set({ launchAtStartup }),
-      setGatewayAutoStart: (gatewayAutoStart) => { set({ gatewayAutoStart }); void window.electron.ipcRenderer.invoke('settings:set', 'gatewayAutoStart', gatewayAutoStart).catch(() => {}); },
-      setGatewayPort: (gatewayPort) => { set({ gatewayPort }); void window.electron.ipcRenderer.invoke('settings:set', 'gatewayPort', gatewayPort).catch(() => {}); },
+      setGatewayAutoStart: (gatewayAutoStart) => {
+        set({ gatewayAutoStart });
+        void hostApiFetch('/api/settings/gatewayAutoStart', {
+          method: 'PUT',
+          body: JSON.stringify({ value: gatewayAutoStart }),
+        }).catch(() => {});
+      },
+      setGatewayPort: (gatewayPort) => {
+        set({ gatewayPort });
+        void hostApiFetch('/api/settings/gatewayPort', {
+          method: 'PUT',
+          body: JSON.stringify({ value: gatewayPort }),
+        }).catch(() => {});
+      },
       setProxyEnabled: (proxyEnabled) => set({ proxyEnabled }),
       setProxyServer: (proxyServer) => set({ proxyServer }),
       setProxyHttpServer: (proxyHttpServer) => set({ proxyHttpServer }),

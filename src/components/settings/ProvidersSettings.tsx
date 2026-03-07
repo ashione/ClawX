@@ -38,6 +38,8 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/stores/settings';
+import { hostApiFetch } from '@/lib/host-api';
+import { subscribeHostEvent } from '@/lib/host-events';
 
 function normalizeFallbackProviderIds(ids?: string[]): string[] {
   return Array.from(new Set((ids ?? []).filter(Boolean)));
@@ -674,16 +676,14 @@ function AddProviderDialog({
       setOauthData(null);
     };
 
-    window.electron.ipcRenderer.on('oauth:code', handleCode);
-    window.electron.ipcRenderer.on('oauth:success', handleSuccess);
-    window.electron.ipcRenderer.on('oauth:error', handleError);
+    const offCode = subscribeHostEvent('oauth:code', handleCode);
+    const offSuccess = subscribeHostEvent('oauth:success', handleSuccess);
+    const offError = subscribeHostEvent('oauth:error', handleError);
 
     return () => {
-      if (typeof window.electron.ipcRenderer.off === 'function') {
-        window.electron.ipcRenderer.off('oauth:code', handleCode);
-        window.electron.ipcRenderer.off('oauth:success', handleSuccess);
-        window.electron.ipcRenderer.off('oauth:error', handleError);
-      }
+      offCode();
+      offSuccess();
+      offError();
     };
   }, []);
 
@@ -704,7 +704,10 @@ function AddProviderDialog({
     setOauthError(null);
 
     try {
-      await window.electron.ipcRenderer.invoke('provider:requestOAuth', selectedType);
+      await hostApiFetch('/api/providers/oauth/start', {
+        method: 'POST',
+        body: JSON.stringify({ provider: selectedType }),
+      });
     } catch (e) {
       setOauthError(String(e));
       setOauthFlowing(false);
@@ -715,7 +718,9 @@ function AddProviderDialog({
     setOauthFlowing(false);
     setOauthData(null);
     setOauthError(null);
-    await window.electron.ipcRenderer.invoke('provider:cancelOAuth');
+    await hostApiFetch('/api/providers/oauth/cancel', {
+      method: 'POST',
+    });
   };
 
   // Only custom can be added multiple times.

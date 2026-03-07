@@ -31,6 +31,8 @@ import { useSettingsStore } from '@/stores/settings';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { toast } from 'sonner';
+import { hostApiFetch } from '@/lib/host-api';
+import { subscribeHostEvent } from '@/lib/host-events';
 interface SetupStep {
   id: string;
   title: string;
@@ -526,8 +528,8 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
 
   const handleShowLogs = async () => {
     try {
-      const logs = await window.electron.ipcRenderer.invoke('log:readFile', 100) as string;
-      setLogContent(logs);
+      const logs = await hostApiFetch<{ content: string }>('/api/logs?tailLines=100');
+      setLogContent(logs.content);
       setShowLogs(true);
     } catch {
       setLogContent('(Failed to load logs)');
@@ -537,7 +539,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
 
   const handleOpenLogDir = async () => {
     try {
-      const logDir = await window.electron.ipcRenderer.invoke('log:getDir') as string;
+      const { dir: logDir } = await hostApiFetch<{ dir: string | null }>('/api/logs/dir');
       if (logDir) {
         await window.electron.ipcRenderer.invoke('shell:showItemInFolder', logDir);
       }
@@ -727,7 +729,10 @@ function ProviderContent({
 
       if (selectedProvider) {
         try {
-          await window.electron.ipcRenderer.invoke('provider:setDefault', selectedProvider);
+          await hostApiFetch('/api/providers/default', {
+            method: 'PUT',
+            body: JSON.stringify({ providerId: selectedProvider }),
+          });
         } catch (error) {
           console.error('Failed to set default provider:', error);
         }
@@ -742,18 +747,14 @@ function ProviderContent({
       setOauthData(null);
     };
 
-    window.electron.ipcRenderer.on('oauth:code', handleCode);
-    window.electron.ipcRenderer.on('oauth:success', handleSuccess);
-    window.electron.ipcRenderer.on('oauth:error', handleError);
+    const offCode = subscribeHostEvent('oauth:code', handleCode);
+    const offSuccess = subscribeHostEvent('oauth:success', handleSuccess);
+    const offError = subscribeHostEvent('oauth:error', handleError);
 
     return () => {
-      // Clean up manually if the API provides removeListener, though `on` in preloads might not return an unsub.
-      // Easiest is to just let it be, or if they have `off`:
-      if (typeof window.electron.ipcRenderer.off === 'function') {
-        window.electron.ipcRenderer.off('oauth:code', handleCode);
-        window.electron.ipcRenderer.off('oauth:success', handleSuccess);
-        window.electron.ipcRenderer.off('oauth:error', handleError);
-      }
+      offCode();
+      offSuccess();
+      offError();
     };
   }, [onConfiguredChange, t, selectedProvider]);
 
@@ -761,7 +762,7 @@ function ProviderContent({
     if (!selectedProvider) return;
 
     try {
-      const list = await window.electron.ipcRenderer.invoke('provider:list') as Array<{ type: string }>;
+      const list = await hostApiFetch<Array<{ type: string }>>('/api/providers');
       const existingTypes = new Set(list.map(l => l.type));
       if (selectedProvider === 'minimax-portal' && existingTypes.has('minimax-portal-cn')) {
         toast.error(t('settings:aiProviders.toast.minimaxConflict'));
@@ -780,7 +781,10 @@ function ProviderContent({
     setOauthError(null);
 
     try {
-      await window.electron.ipcRenderer.invoke('provider:requestOAuth', selectedProvider);
+      await hostApiFetch('/api/providers/oauth/start', {
+        method: 'POST',
+        body: JSON.stringify({ provider: selectedProvider }),
+      });
     } catch (e) {
       setOauthError(String(e));
       setOauthFlowing(false);
@@ -791,7 +795,7 @@ function ProviderContent({
     setOauthFlowing(false);
     setOauthData(null);
     setOauthError(null);
-    await window.electron.ipcRenderer.invoke('provider:cancelOAuth');
+    await hostApiFetch('/api/providers/oauth/cancel', { method: 'POST' });
   };
 
   // On mount, try to restore previously configured provider
@@ -799,8 +803,9 @@ function ProviderContent({
     let cancelled = false;
     (async () => {
       try {
-        const list = await window.electron.ipcRenderer.invoke('provider:list') as Array<{ id: string; type: string; hasKey: boolean }>;
-        const defaultId = await window.electron.ipcRenderer.invoke('provider:getDefault') as string | null;
+        const list = await hostApiFetch<Array<{ id: string; type: string; hasKey: boolean }>>('/api/providers');
+        const defaultInfo = await hostApiFetch<{ providerId: string | null }>('/api/providers/default');
+        const defaultId = defaultInfo.providerId;
         const setupProviderTypes = new Set<string>(providers.map((p) => p.id));
         const setupCandidates = list.filter((p) => setupProviderTypes.has(p.type));
         const preferred =
@@ -813,7 +818,9 @@ function ProviderContent({
           const typeInfo = providers.find((p) => p.id === preferred.type);
           const requiresKey = typeInfo?.requiresApiKey ?? false;
           onConfiguredChange(!requiresKey || preferred.hasKey);
-          const storedKey = await window.electron.ipcRenderer.invoke('provider:getApiKey', preferred.id) as string | null;
+          const storedKey = (await hostApiFetch<{ apiKey: string | null }>(
+            `/api/providers/${encodeURIComponent(preferred.id)}/api-key`,
+          )).apiKey;
           if (storedKey) {
             onApiKeyChange(storedKey);
           }
@@ -835,8 +842,9 @@ function ProviderContent({
     (async () => {
       if (!selectedProvider) return;
       try {
-        const list = await window.electron.ipcRenderer.invoke('provider:list') as Array<{ id: string; type: string; hasKey: boolean }>;
-        const defaultId = await window.electron.ipcRenderer.invoke('provider:getDefault') as string | null;
+        const list = await hostApiFetch<Array<{ id: string; type: string; hasKey: boolean }>>('/api/providers');
+        const defaultInfo = await hostApiFetch<{ providerId: string | null }>('/api/providers/default');
+        const defaultId = defaultInfo.providerId;
         const sameType = list.filter((p) => p.type === selectedProvider);
         const preferredInstance =
           (defaultId && sameType.find((p) => p.id === defaultId))
@@ -845,11 +853,12 @@ function ProviderContent({
         const providerIdForLoad = preferredInstance?.id || selectedProvider;
         setSelectedProviderConfigId(providerIdForLoad);
 
-        const savedProvider = await window.electron.ipcRenderer.invoke(
-          'provider:get',
-          providerIdForLoad
-        ) as { baseUrl?: string; model?: string } | null;
-        const storedKey = await window.electron.ipcRenderer.invoke('provider:getApiKey', providerIdForLoad) as string | null;
+        const savedProvider = await hostApiFetch<{ baseUrl?: string; model?: string } | null>(
+          `/api/providers/${encodeURIComponent(providerIdForLoad)}`,
+        );
+        const storedKey = (await hostApiFetch<{ apiKey: string | null }>(
+          `/api/providers/${encodeURIComponent(providerIdForLoad)}/api-key`,
+        )).apiKey;
         if (!cancelled) {
           if (storedKey) {
             onApiKeyChange(storedKey);
@@ -906,7 +915,7 @@ function ProviderContent({
     if (!selectedProvider) return;
 
     try {
-      const list = await window.electron.ipcRenderer.invoke('provider:list') as Array<{ type: string }>;
+      const list = await hostApiFetch<Array<{ type: string }>>('/api/providers');
       const existingTypes = new Set(list.map(l => l.type));
       if (selectedProvider === 'minimax-portal' && existingTypes.has('minimax-portal-cn')) {
         toast.error(t('settings:aiProviders.toast.minimaxConflict'));

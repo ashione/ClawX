@@ -331,12 +331,14 @@ class DeviceOAuthManager extends EventEmitter {
         userCode: string;
         expiresIn: number;
     }) {
+        this.emit('oauth:code', data);
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('oauth:code', data);
         }
     }
 
     private emitError(message: string) {
+        this.emit('oauth:error', { message });
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('oauth:error', { message });
         }
