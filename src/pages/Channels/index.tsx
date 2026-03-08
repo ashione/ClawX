@@ -2,7 +2,7 @@
  * Channels Page
  * Manage messaging channel connections with configuration UI
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus,
   Radio,
@@ -49,93 +49,38 @@ import { invokeIpc } from '@/lib/api-client';
 
 export function Channels() {
   const { t } = useTranslation('channels');
-  const { channels, loading, error, fetchChannels, deleteChannel } = useChannelsStore();
+  const {
+    channels,
+    configuredTypes,
+    channelSnapshot,
+    configuredTypesSnapshot,
+    showGatewayWarning,
+    loading,
+    error,
+    initRealtimeSync,
+    fetchChannels,
+    fetchConfiguredTypes,
+    syncGatewayViewState,
+    deleteChannel,
+  } = useChannelsStore();
   const gatewayStatus = useGatewayStore((state) => state.status);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedChannelType, setSelectedChannelType] = useState<ChannelType | null>(null);
-  const [configuredTypes, setConfiguredTypes] = useState<string[]>([]);
-  const [channelSnapshot, setChannelSnapshot] = useState<Channel[]>([]);
-  const [configuredTypesSnapshot, setConfiguredTypesSnapshot] = useState<string[]>([]);
   const [channelToDelete, setChannelToDelete] = useState<{ id: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showGatewayWarning, setShowGatewayWarning] = useState(false);
-  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastGatewayStateRef = useRef(gatewayStatus.state);
 
-  // Fetch channels on mount
+  // Fetch channels/configured types on mount
   useEffect(() => {
     void fetchChannels({ probe: false });
-  }, [fetchChannels]);
-
-  // Fetch configured channel types from config file
-  const fetchConfiguredTypes = useCallback(async () => {
-    try {
-      const result = await invokeIpc('channel:listConfigured') as {
-        success: boolean;
-        channels?: string[];
-      };
-      if (result.success && result.channels) {
-        setConfiguredTypes(result.channels);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
     void fetchConfiguredTypes();
-  }, [fetchConfiguredTypes]);
-
-  useEffect(() => {
-    const unsubscribe = window.electron.ipcRenderer.on('gateway:channel-status', () => {
-      if (refreshDebounceRef.current) {
-        clearTimeout(refreshDebounceRef.current);
-      }
-      refreshDebounceRef.current = setTimeout(() => {
-        void fetchChannels({ probe: false, silent: true });
-        void fetchConfiguredTypes();
-      }, 300);
-    });
-    return () => {
-      if (refreshDebounceRef.current) {
-        clearTimeout(refreshDebounceRef.current);
-        refreshDebounceRef.current = null;
-      }
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
   }, [fetchChannels, fetchConfiguredTypes]);
 
-  useEffect(() => {
-    if (gatewayStatus.state === 'running') {
-      setChannelSnapshot(channels);
-      setConfiguredTypesSnapshot(configuredTypes);
-    }
-  }, [gatewayStatus.state, channels, configuredTypes]);
+  useEffect(() => initRealtimeSync(), [initRealtimeSync]);
 
   useEffect(() => {
-    const previousState = lastGatewayStateRef.current;
-    const currentState = gatewayStatus.state;
-    const justReconnected =
-      currentState === 'running' &&
-      previousState !== 'running';
-    lastGatewayStateRef.current = currentState;
-
-    if (!justReconnected) return;
-    void fetchChannels({ probe: false, silent: true });
-    void fetchConfiguredTypes();
-  }, [gatewayStatus.state, fetchChannels, fetchConfiguredTypes]);
-
-  // Delay warning to avoid flicker during expected short reload/restart windows.
-  useEffect(() => {
-    const shouldWarn = gatewayStatus.state === 'stopped' || gatewayStatus.state === 'error';
-    const timer = setTimeout(() => {
-      setShowGatewayWarning(shouldWarn);
-    }, shouldWarn ? 1800 : 0);
-    return () => clearTimeout(timer);
-  }, [gatewayStatus.state]);
+    syncGatewayViewState(gatewayStatus.state);
+  }, [gatewayStatus.state, channels, configuredTypes, syncGatewayViewState]);
 
   // Get channel types to display
   const displayedChannelTypes = getPrimaryChannels();
