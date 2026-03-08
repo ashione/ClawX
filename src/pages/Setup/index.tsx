@@ -755,14 +755,18 @@ function ProviderContent({
       setOauthData(null);
     };
 
-    const offCode = subscribeHostEvent('oauth:code', handleCode);
-    const offSuccess = subscribeHostEvent('oauth:success', handleSuccess);
-    const offError = subscribeHostEvent('oauth:error', handleError);
+    window.electron.ipcRenderer.on('oauth:code', handleCode);
+    window.electron.ipcRenderer.on('oauth:success', handleSuccess);
+    window.electron.ipcRenderer.on('oauth:error', handleError);
 
     return () => {
-      offCode();
-      offSuccess();
-      offError();
+      // Clean up manually if the API provides removeListener, though `on` in preloads might not return an unsub.
+      // Easiest is to just let it be, or if they have `off`:
+      if (typeof window.electron.ipcRenderer.off === 'function') {
+        window.electron.ipcRenderer.off('oauth:code', handleCode);
+        window.electron.ipcRenderer.off('oauth:success', handleSuccess);
+        window.electron.ipcRenderer.off('oauth:error', handleError);
+      }
     };
   }, [onConfiguredChange, t, selectedProvider]);
 

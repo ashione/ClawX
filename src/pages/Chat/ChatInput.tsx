@@ -136,10 +136,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
         fileSize: number;
         stagedPath: string;
         preview: string | null;
-      }>>('/api/files/stage-paths', {
-        method: 'POST',
-        body: JSON.stringify({ filePaths: result.filePaths }),
-      });
+      }>;
       console.log('[pickFiles] Stage result:', staged?.map(s => ({ id: s?.id, fileName: s?.fileName, mimeType: s?.mimeType, fileSize: s?.fileSize, stagedPath: s?.stagedPath, hasPreview: !!s?.preview })));
 
       // Update each placeholder with real data
@@ -207,14 +204,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
           fileSize: number;
           stagedPath: string;
           preview: string | null;
-        }>('/api/files/stage-buffer', {
-          method: 'POST',
-          body: JSON.stringify({
-            base64,
-            fileName: file.name,
-            mimeType: file.type || 'application/octet-stream',
-          }),
-        });
+        };
         console.log(`[stageBuffer] Staged: id=${staged?.id}, path=${staged?.stagedPath}, size=${staged?.fileSize}`);
         setAttachments(prev => prev.map(a =>
           a.id === tempId ? { ...staged, status: 'ready' as const } : a,

@@ -33,8 +33,6 @@ import { useChannelsStore } from '@/stores/channels';
 import { useGatewayStore } from '@/stores/gateway';
 import { StatusBadge, type Status } from '@/components/common/StatusBadge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { hostApiFetch } from '@/lib/host-api';
-import { subscribeHostEvent } from '@/lib/host-events';
 import {
   CHANNEL_ICONS,
   CHANNEL_NAMES,
@@ -76,7 +74,7 @@ export function Channels() {
       const result = await invokeIpc('channel:listConfigured') as {
         success: boolean;
         channels?: string[];
-      }>('/api/channels/configured');
+      };
       if (result.success && result.channels) {
         setConfiguredTypes(result.channels);
       }
@@ -548,9 +546,9 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       setConnecting(false);
     };
 
-    const removeQrListener = subscribeHostEvent('channel:whatsapp-qr', onQr);
-    const removeSuccessListener = subscribeHostEvent('channel:whatsapp-success', onSuccess);
-    const removeErrorListener = subscribeHostEvent('channel:whatsapp-error', onError);
+    const removeQrListener = window.electron.ipcRenderer.on('channel:whatsapp-qr', onQr);
+    const removeSuccessListener = window.electron.ipcRenderer.on('channel:whatsapp-success', onSuccess);
+    const removeErrorListener = window.electron.ipcRenderer.on('channel:whatsapp-error', onError);
 
     return () => {
       if (typeof removeQrListener === 'function') removeQrListener();
@@ -578,10 +576,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
         errors?: string[];
         warnings?: string[];
         details?: Record<string, string>;
-      }>('/api/channels/credentials/validate', {
-        method: 'POST',
-        body: JSON.stringify({ channelType: selectedType, config: configValues }),
-      });
+      };
 
       const warnings = result.warnings || [];
       if (result.valid && result.details) {
@@ -635,10 +630,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
           errors?: string[];
           warnings?: string[];
           details?: Record<string, string>;
-        }>('/api/channels/credentials/validate', {
-          method: 'POST',
-          body: JSON.stringify({ channelType: selectedType, config: configValues }),
-        });
+        };
 
         if (!validationResponse.valid) {
           setValidationResult({
@@ -680,10 +672,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
         error?: string;
         warning?: string;
         pluginInstalled?: boolean;
-      }>('/api/channels/config', {
-        method: 'POST',
-        body: JSON.stringify({ channelType: selectedType, config }),
-      });
+      };
       if (!saveResult?.success) {
         throw new Error(saveResult?.error || 'Failed to save channel config');
       }

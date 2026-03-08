@@ -1,7 +1,7 @@
 /**
  * Chat State Store
  * Manages chat messages, sessions, streaming, and thinking state.
- * Communicates with OpenClaw Gateway via renderer WebSocket RPC.
+ * Communicates with OpenClaw Gateway via gateway:rpc IPC.
  */
 import { create } from 'zustand';
 import { invokeIpc } from '@/lib/api-client';
@@ -1006,8 +1006,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   'gateway:rpc',
                   'chat.history',
                   { sessionKey: session.key, limit: 1000 },
-                );
-                const msgs = Array.isArray(r.messages) ? r.messages as RawMessage[] : [];
+                ) as { success: boolean; result?: Record<string, unknown> };
+                if (!r.success || !r.result) return;
+                const msgs = Array.isArray(r.result.messages) ? r.result.messages as RawMessage[] : [];
                 const firstUser = msgs.find((m) => m.role === 'user');
                 const lastMsg = msgs[msgs.length - 1];
                 set((s) => {
@@ -1080,10 +1081,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const result = await invokeIpc('session:delete', key) as {
         success: boolean;
         error?: string;
-      }>('/api/sessions/delete', {
-        method: 'POST',
-        body: JSON.stringify({ sessionKey: key }),
-      });
+      };
       if (!result.success) {
         console.warn(`[deleteSession] IPC reported failure for ${key}:`, result.error);
       }
@@ -1191,9 +1189,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const result = await invokeIpc(
         'gateway:rpc',
         'chat.history',
-        { sessionKey: currentSessionKey, limit: 200 },
-      );
-      if (data) {
+        { sessionKey: currentSessionKey, limit: 200 }
+      ) as { success: boolean; result?: Record<string, unknown>; error?: string };
+
+      if (result.success && result.result) {
+        const data = result.result;
         const rawMessages = Array.isArray(data.messages) ? data.messages as RawMessage[] : [];
 
         // Before filtering: attach images/files from tool_result messages to the next assistant message
@@ -1429,20 +1429,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         result = await invokeIpc(
           'chat:sendWithMedia',
           {
-            method: 'POST',
-            body: JSON.stringify({
-              sessionKey: currentSessionKey,
-              message: trimmed || 'Process the attached file(s).',
-              deliver: false,
-              idempotencyKey,
-              media: attachments.map((a) => ({
-                filePath: a.stagedPath,
-                mimeType: a.mimeType,
-                fileName: a.fileName,
-              })),
-            }),
+            sessionKey: currentSessionKey,
+            message: trimmed || 'Process the attached file(s).',
+            deliver: false,
+            idempotencyKey,
+            media: attachments.map((a) => ({
+              filePath: a.stagedPath,
+              mimeType: a.mimeType,
+              fileName: a.fileName,
+            })),
           },
-        );
+        ) as { success: boolean; result?: { runId?: string }; error?: string };
       } else {
         result = await invokeIpc(
           'gateway:rpc',
@@ -1454,8 +1451,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             idempotencyKey,
           },
           CHAT_SEND_TIMEOUT_MS,
-        );
-        result = { success: true, result: rpcResult };
+        ) as { success: boolean; result?: { runId?: string }; error?: string };
       }
 
       console.log(`[sendMessage] RPC result: success=${result.success}, runId=${result.result?.runId || 'none'}`);

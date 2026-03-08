@@ -3,7 +3,6 @@
  * Manages scheduled task state
  */
 import { create } from 'zustand';
-import { hostApiFetch } from '@/lib/host-api';
 import type { CronJob, CronJobCreateInput, CronJobUpdateInput } from '../types/cron';
 import { invokeIpc } from '@/lib/api-client';
 

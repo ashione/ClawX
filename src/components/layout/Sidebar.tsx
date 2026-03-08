@@ -26,7 +26,6 @@ import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { invokeIpc } from '@/lib/api-client';
 import { useTranslation } from 'react-i18next';
-import { hostApiFetch } from '@/lib/host-api';
 
 type SessionBucketKey =
   | 'today'
@@ -120,7 +119,7 @@ export function Sidebar() {
         success: boolean;
         url?: string;
         error?: string;
-      }>('/api/gateway/control-ui');
+      };
       if (result.success && result.url) {
         window.electron.openExternal(result.url);
       } else {

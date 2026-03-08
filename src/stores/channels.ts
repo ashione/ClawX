@@ -3,8 +3,6 @@
  * Manages messaging channel state
  */
 import { create } from 'zustand';
-import { hostApiFetch } from '@/lib/host-api';
-import { useGatewayStore } from './gateway';
 import type { Channel, ChannelType } from '../types/channel';
 import { invokeIpc } from '@/lib/api-client';
 
@@ -65,8 +63,12 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
             lastOutboundAt?: number | null;
           }>>;
           channelDefaultAccountId?: Record<string, string>;
-      }>('channels.status', { probe: true });
-      if (data) {
+        };
+        error?: string;
+      };
+
+      if (result.success && result.result) {
+        const data = result.result;
         const channels: Channel[] = [];
 
         // Parse the complex channels.status response into simple Channel objects
@@ -148,11 +150,11 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
         params
       ) as { success: boolean; result?: Channel; error?: string };
 
-      if (result) {
+      if (result.success && result.result) {
         set((state) => ({
-          channels: [...state.channels, result],
+          channels: [...state.channels, result.result!],
         }));
-        return result;
+        return result.result;
       } else {
         // If gateway is not available, create a local channel for now
         const newChannel: Channel = {
@@ -250,8 +252,14 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
     const result = await invokeIpc(
       'gateway:rpc',
       'channels.requestQr',
-      { type: channelType },
-    );
+      { type: channelType }
+    ) as { success: boolean; result?: { qrCode: string; sessionId: string }; error?: string };
+
+    if (result.success && result.result) {
+      return result.result;
+    }
+
+    throw new Error(result.error || 'Failed to request QR code');
   },
 
   setChannels: (channels) => set({ channels }),

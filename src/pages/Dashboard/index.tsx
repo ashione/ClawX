@@ -29,7 +29,6 @@ import { FeedbackState } from '@/components/common/FeedbackState';
 import { invokeIpc } from '@/lib/api-client';
 import { trackUiEvent } from '@/lib/telemetry';
 import { useTranslation } from 'react-i18next';
-import { hostApiFetch } from '@/lib/host-api';
 
 type UsageHistoryEntry = {
   timestamp: string;

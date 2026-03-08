@@ -3,8 +3,6 @@
  * Manages skill/plugin state
  */
 import { create } from 'zustand';
-import { hostApiFetch } from '@/lib/host-api';
-import { useGatewayStore } from './gateway';
 import type { Skill, MarketplaceSkill } from '../types/skill';
 import { invokeIpc } from '@/lib/api-client';
 
@@ -24,6 +22,12 @@ type GatewaySkillStatus = {
 
 type GatewaySkillsStatusResult = {
   skills?: GatewaySkillStatus[];
+};
+
+type GatewayRpcResponse<T> = {
+  success: boolean;
+  result?: T;
+  error?: string;
 };
 
 type ClawHubListResult = {
@@ -86,8 +90,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       const currentSkills = get().skills;
 
       // Map gateway skills info
-      if (gatewayData.skills) {
-        combinedSkills = gatewayData.skills.map((s: GatewaySkillStatus) => {
+      if (gatewayResult.success && gatewayResult.result?.skills) {
+        combinedSkills = gatewayResult.result.skills.map((s: GatewaySkillStatus) => {
           // Merge with direct config if available
           const directConfig = configResult[s.skillKey] || {};
 

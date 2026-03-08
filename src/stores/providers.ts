@@ -51,7 +51,7 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
       
       set({ 
         providers, 
-        defaultProviderId: defaultInfo.providerId,
+        defaultProviderId: defaultId,
         loading: false 
       });
     } catch (error) {

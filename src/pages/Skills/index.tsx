@@ -43,7 +43,6 @@ import { trackUiEvent } from '@/lib/telemetry';
 import { toast } from 'sonner';
 import type { Skill, MarketplaceSkill } from '@/types/skill';
 import { useTranslation } from 'react-i18next';
-import { hostApiFetch } from '@/lib/host-api';
 
 
 

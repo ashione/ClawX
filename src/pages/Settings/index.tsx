@@ -34,7 +34,6 @@ import { invokeIpc, toUserMessage } from '@/lib/api-client';
 import { trackUiEvent } from '@/lib/telemetry';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
-import { hostApiFetch } from '@/lib/host-api';
 type ControlUiInfo = {
   url: string;
   token: string;
@@ -261,7 +260,6 @@ export function Settings() {
         proxyHttpsServer: normalizedHttpsServer,
         proxyAllServer: normalizedAllServer,
         proxyBypassRules: normalizedBypassRules,
-        }),
       });
 
       setProxyServer(normalizedProxyServer);
