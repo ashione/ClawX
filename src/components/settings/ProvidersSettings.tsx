@@ -394,41 +394,43 @@ function ProviderCard({
                 )}
               </div>
             )}
-            <div className="space-y-3 rounded-md border p-3">
-              <p className="text-sm font-medium">{t('aiProviders.sections.fallback')}</p>
-              <div className="space-y-1">
-                <Label className="text-xs">{t('aiProviders.dialog.fallbackModelIds')}</Label>
-                <textarea
-                  value={fallbackModelsText}
-                  onChange={(e) => setFallbackModelsText(e.target.value)}
-                  placeholder={t('aiProviders.dialog.fallbackModelIdsPlaceholder')}
-                  className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t('aiProviders.dialog.fallbackModelIdsHelp')}
-                </p>
+            {devModeUnlocked && (
+              <div className="space-y-3 rounded-md border p-3">
+                <p className="text-sm font-medium">{t('aiProviders.sections.fallback')}</p>
+                <div className="space-y-1">
+                  <Label className="text-xs">{t('aiProviders.dialog.fallbackModelIds')}</Label>
+                  <textarea
+                    value={fallbackModelsText}
+                    onChange={(e) => setFallbackModelsText(e.target.value)}
+                    placeholder={t('aiProviders.dialog.fallbackModelIdsPlaceholder')}
+                    className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t('aiProviders.dialog.fallbackModelIdsHelp')}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">{t('aiProviders.dialog.fallbackProviders')}</Label>
+                  {fallbackOptions.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">{t('aiProviders.dialog.noFallbackOptions')}</p>
+                  ) : (
+                    <div className="space-y-2 rounded-md border p-2">
+                      {fallbackOptions.map((candidate) => (
+                        <label key={candidate.id} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={fallbackProviderIds.includes(candidate.id)}
+                            onChange={() => toggleFallbackProvider(candidate.id)}
+                          />
+                          <span className="font-medium">{candidate.name}</span>
+                          <span className="text-xs text-muted-foreground">{candidate.model || candidate.type}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs">{t('aiProviders.dialog.fallbackProviders')}</Label>
-                {fallbackOptions.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">{t('aiProviders.dialog.noFallbackOptions')}</p>
-                ) : (
-                  <div className="space-y-2 rounded-md border p-2">
-                    {fallbackOptions.map((candidate) => (
-                      <label key={candidate.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={fallbackProviderIds.includes(candidate.id)}
-                          onChange={() => toggleFallbackProvider(candidate.id)}
-                        />
-                        <span className="font-medium">{candidate.name}</span>
-                        <span className="text-xs text-muted-foreground">{candidate.model || candidate.type}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
             <div className="space-y-3 rounded-md border p-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -533,17 +535,19 @@ function ProviderCard({
                   </>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground truncate">
-                {t('aiProviders.card.fallbacks', {
-                  count: (provider.fallbackModels?.length ?? 0) + (provider.fallbackProviderIds?.length ?? 0),
-                  names: [
-                    ...normalizeFallbackModels(provider.fallbackModels),
-                    ...normalizeFallbackProviderIds(provider.fallbackProviderIds)
-                      .map((fallbackId) => allProviders.find((candidate) => candidate.id === fallbackId)?.name)
-                      .filter(Boolean),
-                  ].join(', ') || t('aiProviders.card.none'),
-                })}
-              </p>
+              {devModeUnlocked && (
+                <p className="text-xs text-muted-foreground truncate">
+                  {t('aiProviders.card.fallbacks', {
+                    count: (provider.fallbackModels?.length ?? 0) + (provider.fallbackProviderIds?.length ?? 0),
+                    names: [
+                      ...normalizeFallbackModels(provider.fallbackModels),
+                      ...normalizeFallbackProviderIds(provider.fallbackProviderIds)
+                        .map((fallbackId) => allProviders.find((candidate) => candidate.id === fallbackId)?.name)
+                        .filter(Boolean),
+                    ].join(', ') || t('aiProviders.card.none'),
+                  })}
+                </p>
+              )}
             </div>
             <div className="flex gap-0.5 shrink-0 ml-2">
               <Button
