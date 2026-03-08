@@ -55,6 +55,7 @@ import { applyProxySettings } from './proxy';
 import { proxyAwareFetch } from '../utils/proxy-fetch';
 import { getRecentTokenUsageHistory } from '../utils/token-usage';
 import { appUpdater } from './updater';
+import { PORTS } from '../utils/config';
 
 type AppRequest = {
   id?: string;
@@ -1218,6 +1219,102 @@ function registerGatewayHandlers(
     timeoutMs?: number;
   };
 
+  type HostApiProxyRequest = {
+    path?: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    timeoutMs?: number;
+  };
+
+  type ProxyResponseData = {
+    status: number;
+    ok: boolean;
+    json?: unknown;
+    text?: string;
+  };
+
+  type ProxyResponseEnvelope = {
+    ok: boolean;
+    data?: ProxyResponseData;
+    error?: {
+      code: 'NETWORK' | 'TIMEOUT' | 'UNKNOWN';
+      message: string;
+      details?: unknown;
+    };
+    // backward compatibility fields
+    success?: boolean;
+    status?: number;
+    json?: unknown;
+    text?: string;
+  };
+
+  const toProxyError = (error: unknown): ProxyResponseEnvelope => {
+    const message = error instanceof Error ? error.message : String(error);
+    const lowered = message.toLowerCase();
+    const code = lowered.includes('timeout') ? 'TIMEOUT' : lowered.includes('network') ? 'NETWORK' : 'UNKNOWN';
+    return {
+      ok: false,
+      error: { code, message, details: error },
+      success: false,
+    };
+  };
+
+  const performLocalProxyRequest = async (
+    baseUrl: string,
+    request: GatewayHttpProxyRequest | HostApiProxyRequest,
+  ): Promise<ProxyResponseEnvelope> => {
+    const path = request?.path && request.path.startsWith('/') ? request.path : '/';
+    const method = (request?.method || 'GET').toUpperCase();
+    const timeoutMs =
+      typeof request?.timeoutMs === 'number' && request.timeoutMs > 0
+        ? request.timeoutMs
+        : 15000;
+
+    const headers: Record<string, string> = {
+      ...(request?.headers ?? {}),
+    };
+
+    let body: string | undefined;
+    if (request?.body !== undefined && request?.body !== null) {
+      body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
+      if (!headers['Content-Type'] && !headers['content-type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await proxyAwareFetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    const data: ProxyResponseData = {
+      status: response.status,
+      ok: response.ok,
+    };
+    if (contentType.includes('application/json')) {
+      data.json = await response.json();
+    } else {
+      data.text = await response.text();
+    }
+
+    return {
+      ok: true,
+      data,
+      // backward compatibility fields
+      success: true,
+      status: data.status,
+      json: data.json,
+      text: data.text,
+    };
+  };
+
   // Get Gateway status
   ipcMain.handle('gateway:status', () => {
     return gatewayManager.getStatus();
@@ -1275,62 +1372,16 @@ function registerGatewayHandlers(
     try {
       const status = gatewayManager.getStatus();
       const port = status.port || 18789;
-      const path = request?.path && request.path.startsWith('/') ? request.path : '/';
-      const method = (request?.method || 'GET').toUpperCase();
-      const timeoutMs =
-        typeof request?.timeoutMs === 'number' && request.timeoutMs > 0
-          ? request.timeoutMs
-          : 15000;
-
       const token = await getSetting('gatewayToken');
-      const headers: Record<string, string> = {
+      const headers = {
         ...(request?.headers ?? {}),
       };
       if (!headers.Authorization && !headers.authorization && token) {
         headers.Authorization = `Bearer ${token}`;
       }
-
-      let body: string | undefined;
-      if (request?.body !== undefined && request?.body !== null) {
-        body = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
-        if (!headers['Content-Type'] && !headers['content-type']) {
-          headers['Content-Type'] = 'application/json';
-        }
-      }
-
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const response = await proxyAwareFetch(`http://127.0.0.1:${port}${path}`, {
-        method,
-        headers,
-        body,
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-
-      const contentType = (response.headers.get('content-type') || '').toLowerCase();
-      if (contentType.includes('application/json')) {
-        const json = await response.json();
-        return {
-          success: true,
-          status: response.status,
-          ok: response.ok,
-          json,
-        };
-      }
-
-      const text = await response.text();
-      return {
-        success: true,
-        status: response.status,
-        ok: response.ok,
-        text,
-      };
+      return await performLocalProxyRequest(`http://127.0.0.1:${port}`, { ...request, headers });
     } catch (error) {
-      return {
-        success: false,
-        error: String(error),
-      };
+      return toProxyError(error);
     }
   });
 
@@ -1483,6 +1534,17 @@ function registerGatewayHandlers(
   gatewayManager.on('error', (error) => {
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send('gateway:error', error.message);
+    }
+  });
+
+  // Host API HTTP proxy
+  // Renderer must not call host API directly in dev mode (CORS); always proxy via main.
+  ipcMain.handle('hostapi:fetch', async (_, request: HostApiProxyRequest) => {
+    try {
+      const hostApiPort = PORTS.CLAWX_HOST_API;
+      return await performLocalProxyRequest(`http://127.0.0.1:${hostApiPort}`, request);
+    } catch (error) {
+      return toProxyError(error);
     }
   });
 }
