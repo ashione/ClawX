@@ -117,6 +117,11 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
           channelDefaultAccountId?: Record<string, string>;
         };
         error?: string;
+        gatewayStatus?: {
+          state?: string;
+          error?: string;
+          port?: number;
+        };
       };
 
       if (result.success && result.result) {
@@ -192,12 +197,18 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
         });
       } else {
         // Gateway not available - try to show channels from local config
-        set((state) => ({ channels: [], loading: silent ? state.loading : false }));
+        set((state) => ({
+          channels: [],
+          loading: silent ? state.loading : false,
+          error: result.error || state.error,
+        }));
         trackUiTiming('channels.fetch', Date.now() - startedAt, {
           source: 'gateway-unavailable',
           probe,
           silent,
           count: 0,
+          error: result.error || 'unknown',
+          gatewayState: result.gatewayStatus?.state || 'unknown',
         });
       }
     } catch (error) {

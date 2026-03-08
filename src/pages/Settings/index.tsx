@@ -30,7 +30,12 @@ import { useGatewayStore } from '@/stores/gateway';
 import { useUpdateStore } from '@/stores/update';
 import { ProvidersSettings } from '@/components/settings/ProvidersSettings';
 import { UpdateSettings } from '@/components/settings/UpdateSettings';
-import { invokeIpc, toUserMessage } from '@/lib/api-client';
+import {
+  getGatewayWsDiagnosticEnabled,
+  invokeIpc,
+  setGatewayWsDiagnosticEnabled,
+  toUserMessage,
+} from '@/lib/api-client';
 import {
   clearUiTelemetry,
   getUiTelemetrySnapshot,
@@ -89,6 +94,7 @@ export function Settings() {
   const [proxyEnabledDraft, setProxyEnabledDraft] = useState(false);
   const [showAdvancedProxy, setShowAdvancedProxy] = useState(false);
   const [savingProxy, setSavingProxy] = useState(false);
+  const [wsDiagnosticEnabled, setWsDiagnosticEnabled] = useState(false);
   const [showTelemetryViewer, setShowTelemetryViewer] = useState(false);
   const [telemetryEntries, setTelemetryEntries] = useState<UiTelemetryEntry[]>([]);
 
@@ -215,6 +221,10 @@ export function Settings() {
       },
     );
     return () => { unsubscribe?.(); };
+  }, []);
+
+  useEffect(() => {
+    setWsDiagnosticEnabled(getGatewayWsDiagnosticEnabled());
   }, []);
 
   useEffect(() => {
@@ -368,6 +378,16 @@ export function Settings() {
     clearUiTelemetry();
     setTelemetryEntries([]);
     toast.success(t('developer.telemetryCleared'));
+  };
+
+  const handleWsDiagnosticToggle = (enabled: boolean) => {
+    setGatewayWsDiagnosticEnabled(enabled);
+    setWsDiagnosticEnabled(enabled);
+    toast.success(
+      enabled
+        ? t('developer.wsDiagnosticEnabled')
+        : t('developer.wsDiagnosticDisabled'),
+    );
   };
 
   return (
@@ -799,6 +819,19 @@ export function Settings() {
 
             <Separator />
             <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-md border border-border/60 p-3">
+                <div>
+                  <Label>{t('developer.wsDiagnostic')}</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {t('developer.wsDiagnosticDesc')}
+                  </p>
+                </div>
+                <Switch
+                  checked={wsDiagnosticEnabled}
+                  onCheckedChange={handleWsDiagnosticToggle}
+                />
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <Label>{t('developer.telemetryViewer')}</Label>

@@ -1361,7 +1361,11 @@ function registerGatewayHandlers(
       const result = await gatewayManager.rpc(method, params, timeoutMs);
       return { success: true, result };
     } catch (error) {
-      return { success: false, error: String(error) };
+      return {
+        success: false,
+        error: String(error),
+        gatewayStatus: gatewayManager.getStatus(),
+      };
     }
   });
 

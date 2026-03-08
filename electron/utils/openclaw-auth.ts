@@ -689,6 +689,15 @@ export async function syncGatewayTokenToConfig(token: string): Promise<void> {
   auth.mode = 'token';
   auth.token = token;
   gateway.auth = auth;
+  const controlUi = (
+    gateway.controlUi && typeof gateway.controlUi === 'object'
+      ? { ...(gateway.controlUi as Record<string, unknown>) }
+      : {}
+  ) as Record<string, unknown>;
+  // Allow browser/control-ui style clients (without device identity signature)
+  // to keep requested scopes, aligning with panel-style WS clients.
+  controlUi.dangerouslyDisableDeviceAuth = true;
+  gateway.controlUi = controlUi;
   if (!gateway.mode) gateway.mode = 'local';
   config.gateway = gateway;
 
