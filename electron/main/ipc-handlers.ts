@@ -56,6 +56,7 @@ import { proxyAwareFetch } from '../utils/proxy-fetch';
 import { getRecentTokenUsageHistory } from '../utils/token-usage';
 import { appUpdater } from './updater';
 import { PORTS } from '../utils/config';
+import { buildNonOAuthAgentProviderUpdate } from './provider-model-sync';
 
 type AppRequest = {
   id?: string;
@@ -146,6 +147,17 @@ async function getProviderFallbackModelRefs(config: ProviderConfig): Promise<str
   }
 
   return results;
+}
+
+async function syncAgentModelsForNonOAuthProvider(
+  provider: ProviderConfig,
+  providerId: string,
+  modelRef: string | undefined
+): Promise<void> {
+  const payload = buildNonOAuthAgentProviderUpdate(provider, providerId, modelRef);
+  if (!payload) return;
+
+  await updateAgentModelProvider(payload.providerKey, payload.entry);
 }
 
 /**
@@ -2093,6 +2105,14 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
             } else {
               await setOpenClawDefaultModel(ock, modelOverride, fallbackModels);
             }
+
+            if (!isOAuthProviderType(nextConfig.type)) {
+              try {
+                await syncAgentModelsForNonOAuthProvider(nextConfig, providerId, modelOverride);
+              } catch (err) {
+                logger.warn(`Failed to sync models.json for provider "${ock}" after update:`, err);
+              }
+            }
           }
 
           // Debounced restart so the gateway picks up updated config/env vars.
@@ -2194,6 +2214,15 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
             // Keep auth-profiles in sync with the default provider instance.
             if (providerKey) {
               await saveProviderKeyToOpenClaw(ock, providerKey);
+            }
+
+            // Keep per-agent models.json aligned with latest provider defaults.
+            // This prevents stale inline keys/baseUrls (from older OpenClaw configs)
+            // from overriding auth-profiles/env and causing 401 loops.
+            try {
+              await syncAgentModelsForNonOAuthProvider(provider, providerId, modelOverride);
+            } catch (err) {
+              logger.warn(`Failed to sync models.json for provider "${ock}":`, err);
             }
           } else {
             const defaultBaseUrl = getOAuthProviderDefaultBaseUrl(provider.type);
