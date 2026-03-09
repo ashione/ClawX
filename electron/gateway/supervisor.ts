@@ -20,17 +20,6 @@ export function warmupManagedPythonReadiness(): void {
   });
 }
 
-export function isTransientGatewayStartError(error: unknown): boolean {
-  const errMsg = String(error);
-  return (
-    errMsg.includes('WebSocket closed before handshake') ||
-    errMsg.includes('ECONNREFUSED') ||
-    errMsg.includes('Gateway process exited before becoming ready') ||
-    errMsg.includes('Timed out waiting for connect.challenge') ||
-    errMsg.includes('Connect handshake timeout')
-  );
-}
-
 export async function terminateOwnedGatewayProcess(child: Electron.UtilityProcess): Promise<void> {
   let exited = false;
 

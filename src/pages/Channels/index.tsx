@@ -2,7 +2,7 @@
  * Channels Page
  * Manage messaging channel connections with configuration UI
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus,
   Radio,
@@ -33,6 +33,9 @@ import { useChannelsStore } from '@/stores/channels';
 import { useGatewayStore } from '@/stores/gateway';
 import { StatusBadge, type Status } from '@/components/common/StatusBadge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { hostApiFetch } from '@/lib/host-api';
+import { subscribeHostEvent } from '@/lib/host-events';
+import { invokeIpc } from '@/lib/api-client';
 import {
   CHANNEL_ICONS,
   CHANNEL_NAMES,
@@ -45,70 +48,61 @@ import {
 } from '@/types/channel';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { invokeIpc } from '@/lib/api-client';
 
 export function Channels() {
   const { t } = useTranslation('channels');
-  const {
-    channels,
-    configuredTypes,
-    channelSnapshot,
-    configuredTypesSnapshot,
-    showGatewayWarning,
-    loading,
-    error,
-    initRealtimeSync,
-    fetchChannels,
-    fetchConfiguredTypes,
-    syncGatewayViewState,
-    deleteChannel,
-  } = useChannelsStore();
+  const { channels, loading, error, fetchChannels, deleteChannel } = useChannelsStore();
   const gatewayStatus = useGatewayStore((state) => state.status);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedChannelType, setSelectedChannelType] = useState<ChannelType | null>(null);
+  const [configuredTypes, setConfiguredTypes] = useState<string[]>([]);
   const [channelToDelete, setChannelToDelete] = useState<{ id: string } | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch channels/configured types on mount
+  // Fetch channels on mount
   useEffect(() => {
-    void fetchChannels({ probe: false });
+    fetchChannels();
+  }, [fetchChannels]);
+
+  // Fetch configured channel types from config file
+  const fetchConfiguredTypes = useCallback(async () => {
+    try {
+      const result = await hostApiFetch<{
+        success: boolean;
+        channels?: string[];
+      }>('/api/channels/configured');
+      if (result.success && result.channels) {
+        setConfiguredTypes(result.channels);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchConfiguredTypes();
-  }, [fetchChannels, fetchConfiguredTypes]);
-
-  useEffect(() => initRealtimeSync(), [initRealtimeSync]);
+  }, [fetchConfiguredTypes]);
 
   useEffect(() => {
-    syncGatewayViewState(gatewayStatus.state);
-  }, [gatewayStatus.state, channels, configuredTypes, syncGatewayViewState]);
+    const unsubscribe = subscribeHostEvent('gateway:channel-status', () => {
+      fetchChannels();
+      fetchConfiguredTypes();
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [fetchChannels, fetchConfiguredTypes]);
 
   // Get channel types to display
   const displayedChannelTypes = getPrimaryChannels();
-  const isGatewayTransitioning =
-    gatewayStatus.state === 'starting' || gatewayStatus.state === 'reconnecting';
-  const channelsForView =
-    isGatewayTransitioning && channels.length === 0 ? channelSnapshot : channels;
-  const configuredTypesForView =
-    isGatewayTransitioning && configuredTypes.length === 0 ? configuredTypesSnapshot : configuredTypes;
-
-  // Single source of truth for configured status across cards, stats and badges.
-  const configuredTypeSet = useMemo(() => {
-    const set = new Set<string>(configuredTypesForView);
-    if (set.size === 0 && channelsForView.length > 0) {
-      channelsForView.forEach((channel) => set.add(channel.type));
-    }
-    return set;
-  }, [configuredTypesForView, channelsForView]);
-
-  const configuredChannels = useMemo(
-    () => channelsForView.filter((channel) => configuredTypeSet.has(channel.type)),
-    [channelsForView, configuredTypeSet]
-  );
 
   // Connected/disconnected channel counts
-  const connectedCount = configuredChannels.filter((c) => c.status === 'connected').length;
+  const connectedCount = channels.filter((c) => c.status === 'connected').length;
 
-  if (loading && channels.length === 0) {
+  if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -127,20 +121,8 @@ export function Channels() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                setRefreshing(true);
-                await fetchChannels({ probe: true, silent: true });
-                await fetchConfiguredTypes();
-              } finally {
-                setRefreshing(false);
-              }
-            }}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2${refreshing ? ' animate-spin' : ''}`} />
+          <Button variant="outline" onClick={fetchChannels}>
+            <RefreshCw className="h-4 w-4 mr-2" />
             {t('refresh')}
           </Button>
           <Button onClick={() => setShowAddDialog(true)}>
@@ -159,7 +141,7 @@ export function Channels() {
                 <Radio className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{configuredChannels.length}</p>
+                <p className="text-2xl font-bold">{channels.length}</p>
                 <p className="text-sm text-muted-foreground">{t('stats.total')}</p>
               </div>
             </div>
@@ -185,7 +167,7 @@ export function Channels() {
                 <PowerOff className="h-6 w-6 text-slate-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{configuredChannels.length - connectedCount}</p>
+                <p className="text-2xl font-bold">{channels.length - connectedCount}</p>
                 <p className="text-sm text-muted-foreground">{t('stats.disconnected')}</p>
               </div>
             </div>
@@ -194,7 +176,7 @@ export function Channels() {
       </div>
 
       {/* Gateway Warning */}
-      {showGatewayWarning && (
+      {gatewayStatus.state !== 'running' && (
         <Card className="border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10">
           <CardContent className="py-4 flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-yellow-500" />
@@ -215,7 +197,7 @@ export function Channels() {
       )}
 
       {/* Configured Channels */}
-      {configuredChannels.length > 0 && (
+      {channels.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>{t('configured')}</CardTitle>
@@ -223,7 +205,7 @@ export function Channels() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {configuredChannels.map((channel) => (
+              {channels.map((channel) => (
                 <ChannelCard
                   key={channel.id}
                   channel={channel}
@@ -251,7 +233,7 @@ export function Channels() {
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {displayedChannelTypes.map((type) => {
               const meta = CHANNEL_META[type];
-              const isConfigured = configuredTypeSet.has(type);
+              const isConfigured = configuredTypes.includes(type);
               return (
                 <button
                   key={type}
@@ -264,7 +246,7 @@ export function Channels() {
                   <span className="text-3xl">{meta.icon}</span>
                   <p className="font-medium mt-2">{meta.name}</p>
                   <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                    {t(meta.description)}
+                    {meta.description}
                   </p>
                   {isConfigured && (
                     <Badge className="absolute top-2 right-2 text-xs bg-green-600 hover:bg-green-600">
@@ -293,12 +275,8 @@ export function Channels() {
             setSelectedChannelType(null);
           }}
           onChannelAdded={() => {
-            void fetchChannels({ probe: false, silent: true });
-            void fetchConfiguredTypes();
-            setTimeout(() => {
-              void fetchChannels({ probe: false, silent: true });
-              void fetchConfiguredTypes();
-            }, 2200);
+            fetchChannels();
+            fetchConfiguredTypes();
             setShowAddDialog(false);
             setSelectedChannelType(null);
           }}
@@ -307,16 +285,14 @@ export function Channels() {
 
       <ConfirmDialog
         open={!!channelToDelete}
-        title={t('common:actions.confirm', 'Confirm')}
+        title={t('common.confirm', 'Confirm')}
         message={t('deleteConfirm')}
-        confirmLabel={t('common:actions.delete', 'Delete')}
-        cancelLabel={t('common:actions.cancel', 'Cancel')}
+        confirmLabel={t('common.delete', 'Delete')}
+        cancelLabel={t('common.cancel', 'Cancel')}
         variant="destructive"
         onConfirm={async () => {
           if (channelToDelete) {
             await deleteChannel(channelToDelete.id);
-            await fetchConfiguredTypes();
-            await fetchChannels({ probe: false, silent: true });
             setChannelToDelete(null);
           }
         }}
@@ -382,6 +358,7 @@ interface AddChannelDialogProps {
 
 function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded }: AddChannelDialogProps) {
   const { t } = useTranslation('channels');
+  const { addChannel } = useChannelsStore();
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [channelName, setChannelName] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -408,7 +385,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       setChannelName('');
       setIsExistingConfig(false);
       // Ensure we clean up any pending QR session if switching away
-      invokeIpc('channel:cancelWhatsAppQr').catch(() => { });
+      hostApiFetch('/api/channels/whatsapp/cancel', { method: 'POST' }).catch(() => { });
       return;
     }
 
@@ -465,11 +442,10 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       toast.success(t('toast.whatsappConnected'));
       const accountId = data?.accountId || channelName.trim() || 'default';
       try {
-        const saveResult = await invokeIpc(
-          'channel:saveConfig',
-          'whatsapp',
-          { enabled: true }
-        ) as { success?: boolean; error?: string };
+        const saveResult = await hostApiFetch<{ success?: boolean; error?: string }>('/api/channels/config', {
+          method: 'POST',
+          body: JSON.stringify({ channelType: 'whatsapp', config: { enabled: true } }),
+        });
         if (!saveResult?.success) {
           console.error('Failed to save WhatsApp config:', saveResult?.error);
         } else {
@@ -478,9 +454,15 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       } catch (error) {
         console.error('Failed to save WhatsApp config:', error);
       }
-      // channel:saveConfig triggers main-process reload/restart handling.
-      // UI state refresh is handled by parent onChannelAdded().
-      onChannelAdded();
+      // Register the channel locally so it shows up immediately
+      addChannel({
+        type: 'whatsapp',
+        name: channelName || 'WhatsApp',
+      }).then(() => {
+        // Restart gateway to pick up the new session
+        useGatewayStore.getState().restart().catch(console.error);
+        onChannelAdded();
+      });
     };
 
     const onError = (...args: unknown[]) => {
@@ -491,18 +473,18 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       setConnecting(false);
     };
 
-    const removeQrListener = window.electron.ipcRenderer.on('channel:whatsapp-qr', onQr);
-    const removeSuccessListener = window.electron.ipcRenderer.on('channel:whatsapp-success', onSuccess);
-    const removeErrorListener = window.electron.ipcRenderer.on('channel:whatsapp-error', onError);
+    const removeQrListener = subscribeHostEvent('channel:whatsapp-qr', onQr);
+    const removeSuccessListener = subscribeHostEvent('channel:whatsapp-success', onSuccess);
+    const removeErrorListener = subscribeHostEvent('channel:whatsapp-error', onError);
 
     return () => {
       if (typeof removeQrListener === 'function') removeQrListener();
       if (typeof removeSuccessListener === 'function') removeSuccessListener();
       if (typeof removeErrorListener === 'function') removeErrorListener();
       // Cancel when unmounting or switching types
-      invokeIpc('channel:cancelWhatsAppQr').catch(() => { });
+      hostApiFetch('/api/channels/whatsapp/cancel', { method: 'POST' }).catch(() => { });
     };
-  }, [selectedType, channelName, onChannelAdded, t]);
+  }, [selectedType, addChannel, channelName, onChannelAdded, t]);
 
   const handleValidate = async () => {
     if (!selectedType) return;
@@ -511,17 +493,16 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
     setValidationResult(null);
 
     try {
-      const result = await invokeIpc(
-        'channel:validateCredentials',
-        selectedType,
-        configValues
-      ) as {
+      const result = await hostApiFetch<{
         success: boolean;
         valid?: boolean;
         errors?: string[];
         warnings?: string[];
         details?: Record<string, string>;
-      };
+      }>('/api/channels/credentials/validate', {
+        method: 'POST',
+        body: JSON.stringify({ channelType: selectedType, config: configValues }),
+      });
 
       const warnings = result.warnings || [];
       if (result.valid && result.details) {
@@ -558,24 +539,26 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       // For QR-based channels, request QR code
       if (meta.connectionType === 'qr') {
         const accountId = channelName.trim() || 'default';
-        await invokeIpc('channel:requestWhatsAppQr', accountId);
+        await hostApiFetch('/api/channels/whatsapp/start', {
+          method: 'POST',
+          body: JSON.stringify({ accountId }),
+        });
         // The QR code will be set via event listener
         return;
       }
 
       // Step 1: Validate credentials against the actual service API
       if (meta.connectionType === 'token') {
-        const validationResponse = await invokeIpc(
-          'channel:validateCredentials',
-          selectedType,
-          configValues
-        ) as {
+        const validationResponse = await hostApiFetch<{
           success: boolean;
           valid?: boolean;
           errors?: string[];
           warnings?: string[];
           details?: Record<string, string>;
-        };
+        }>('/api/channels/credentials/validate', {
+          method: 'POST',
+          body: JSON.stringify({ channelType: selectedType, config: configValues }),
+        });
 
         if (!validationResponse.valid) {
           setValidationResult({
@@ -612,12 +595,15 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
 
       // Step 2: Save channel configuration via IPC
       const config: Record<string, unknown> = { ...configValues };
-      const saveResult = await invokeIpc('channel:saveConfig', selectedType, config) as {
+      const saveResult = await hostApiFetch<{
         success?: boolean;
         error?: string;
         warning?: string;
         pluginInstalled?: boolean;
-      };
+      }>('/api/channels/config', {
+        method: 'POST',
+        body: JSON.stringify({ channelType: selectedType, config }),
+      });
       if (!saveResult?.success) {
         throw new Error(saveResult?.error || 'Failed to save channel config');
       }
@@ -625,13 +611,20 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
         toast.warning(saveResult.warning);
       }
 
-      // Step 3: Do not call channels.add from renderer; this races with
-      // gateway reload/restart windows and can create stale local entries.
+      // Step 3: Add a local channel entry for the UI
+      await addChannel({
+        type: selectedType,
+        name: channelName || CHANNEL_NAMES[selectedType],
+        token: configValues[meta.configFields[0]?.key] || undefined,
+      });
 
       toast.success(t('toast.channelSaved', { name: meta.name }));
 
-      // Gateway reload/restart is handled in the main-process save handler.
-      // Renderer should only persist config and refresh local UI state.
+      // Gateway restart is now handled server-side via debouncedRestart()
+      // inside the channel:saveConfig IPC handler, so we don't need to
+      // trigger it explicitly here.  This avoids cascading restarts when
+      // multiple config changes happen in quick succession (e.g. during
+      // the setup wizard).
       toast.success(t('toast.channelConnecting', { name: meta.name }));
 
       // Brief delay so user can see the success state before dialog closes

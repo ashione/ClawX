@@ -24,7 +24,9 @@ import { ensureBuiltinSkillsInstalled } from '../utils/skill-config';
 import { startHostApiServer } from '../api/server';
 import { HostEventBus } from '../api/event-bus';
 import { deviceOAuthManager } from '../utils/device-oauth';
+import { browserOAuthManager } from '../utils/browser-oauth';
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
+import { syncAllProviderAuthToRuntime } from '../services/providers/provider-runtime-sync';
 
 // Disable GPU hardware acceleration globally for maximum stability across
 // all GPU configurations (no GPU, integrated, discrete).
@@ -269,11 +271,23 @@ async function initialize(): Promise<void> {
     hostEventBus.emit('oauth:start', payload);
   });
 
-  deviceOAuthManager.on('oauth:success', (provider) => {
-    hostEventBus.emit('oauth:success', { provider, success: true });
+  deviceOAuthManager.on('oauth:success', (payload) => {
+    hostEventBus.emit('oauth:success', { ...payload, success: true });
   });
 
   deviceOAuthManager.on('oauth:error', (error) => {
+    hostEventBus.emit('oauth:error', error);
+  });
+
+  browserOAuthManager.on('oauth:start', (payload) => {
+    hostEventBus.emit('oauth:start', payload);
+  });
+
+  browserOAuthManager.on('oauth:success', (payload) => {
+    hostEventBus.emit('oauth:success', { ...payload, success: true });
+  });
+
+  browserOAuthManager.on('oauth:error', (error) => {
     hostEventBus.emit('oauth:error', error);
   });
 
@@ -293,6 +307,7 @@ async function initialize(): Promise<void> {
   const gatewayAutoStart = await getSetting('gatewayAutoStart');
   if (gatewayAutoStart) {
     try {
+      await syncAllProviderAuthToRuntime();
       logger.debug('Auto-starting Gateway...');
       await gatewayManager.start();
       logger.info('Gateway auto-start succeeded');
