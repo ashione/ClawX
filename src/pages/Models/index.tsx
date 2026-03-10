@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft,
@@ -30,6 +30,8 @@ type UsageHistoryEntry = {
 
 type UsageWindow = '7d' | '30d' | 'all';
 type UsageGroupBy = 'model' | 'day';
+const USAGE_FETCH_MAX_ATTEMPTS = 6;
+const USAGE_FETCH_RETRY_DELAY_MS = 1500;
 
 export function Models() {
   const { t } = useTranslation(['dashboard', 'settings']);
@@ -42,23 +44,61 @@ export function Models() {
   const [usageWindow, setUsageWindow] = useState<UsageWindow>('7d');
   const [usagePage, setUsagePage] = useState(1);
   const [selectedUsageEntry, setSelectedUsageEntry] = useState<UsageHistoryEntry | null>(null);
+  const usageFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const usageFetchGenerationRef = useRef(0);
 
   useEffect(() => {
     trackUiEvent('models.page_viewed');
   }, []);
 
   useEffect(() => {
-    if (isGatewayRunning) {
-      hostApiFetch<UsageHistoryEntry[]>('/api/usage/recent-token-history')
-        .then((entries) => {
-          setUsageHistory(Array.isArray(entries) ? entries : []);
-          setUsagePage(1);
-        })
-        .catch(() => {
-          setUsageHistory([]);
-        });
+    if (usageFetchTimerRef.current) {
+      clearTimeout(usageFetchTimerRef.current);
+      usageFetchTimerRef.current = null;
     }
-  }, [isGatewayRunning]);
+
+    if (!isGatewayRunning) return;
+
+    const generation = usageFetchGenerationRef.current + 1;
+    usageFetchGenerationRef.current = generation;
+    setUsageHistory([]);
+    setUsagePage(1);
+
+    const fetchUsageHistoryWithRetry = async (attempt: number) => {
+      try {
+        const entries = await hostApiFetch<UsageHistoryEntry[]>('/api/usage/recent-token-history');
+        if (usageFetchGenerationRef.current !== generation) return;
+
+        const normalized = Array.isArray(entries) ? entries : [];
+        setUsageHistory(normalized);
+        setUsagePage(1);
+
+        if (normalized.length === 0 && attempt < USAGE_FETCH_MAX_ATTEMPTS) {
+          usageFetchTimerRef.current = setTimeout(() => {
+            void fetchUsageHistoryWithRetry(attempt + 1);
+          }, USAGE_FETCH_RETRY_DELAY_MS);
+        }
+      } catch {
+        if (usageFetchGenerationRef.current !== generation) return;
+        if (attempt < USAGE_FETCH_MAX_ATTEMPTS) {
+          usageFetchTimerRef.current = setTimeout(() => {
+            void fetchUsageHistoryWithRetry(attempt + 1);
+          }, USAGE_FETCH_RETRY_DELAY_MS);
+          return;
+        }
+        setUsageHistory([]);
+      }
+    };
+
+    void fetchUsageHistoryWithRetry(1);
+
+    return () => {
+      if (usageFetchTimerRef.current) {
+        clearTimeout(usageFetchTimerRef.current);
+        usageFetchTimerRef.current = null;
+      }
+    };
+  }, [isGatewayRunning, gatewayStatus.connectedAt, gatewayStatus.pid]);
 
   const visibleUsageHistory = isGatewayRunning ? usageHistory : [];
   const filteredUsageHistory = filterUsageHistoryByWindow(visibleUsageHistory, usageWindow);
