@@ -61,10 +61,18 @@ export function Models() {
 
     const generation = usageFetchGenerationRef.current + 1;
     usageFetchGenerationRef.current = generation;
-    setUsageHistory([]);
-    setUsagePage(1);
+    const restartMarker = `${gatewayStatus.pid ?? 'na'}:${gatewayStatus.connectedAt ?? 'na'}`;
+    trackUiEvent('models.token_usage_fetch_started', {
+      generation,
+      restartMarker,
+    });
 
     const fetchUsageHistoryWithRetry = async (attempt: number) => {
+      trackUiEvent('models.token_usage_fetch_attempt', {
+        generation,
+        attempt,
+        restartMarker,
+      });
       try {
         const entries = await hostApiFetch<UsageHistoryEntry[]>('/api/usage/recent-token-history');
         if (usageFetchGenerationRef.current !== generation) return;
@@ -72,21 +80,58 @@ export function Models() {
         const normalized = Array.isArray(entries) ? entries : [];
         setUsageHistory(normalized);
         setUsagePage(1);
+        trackUiEvent('models.token_usage_fetch_succeeded', {
+          generation,
+          attempt,
+          records: normalized.length,
+          restartMarker,
+        });
 
         if (normalized.length === 0 && attempt < USAGE_FETCH_MAX_ATTEMPTS) {
+          trackUiEvent('models.token_usage_fetch_retry_scheduled', {
+            generation,
+            attempt,
+            reason: 'empty',
+            restartMarker,
+          });
           usageFetchTimerRef.current = setTimeout(() => {
             void fetchUsageHistoryWithRetry(attempt + 1);
           }, USAGE_FETCH_RETRY_DELAY_MS);
+        } else if (normalized.length === 0) {
+          trackUiEvent('models.token_usage_fetch_exhausted', {
+            generation,
+            attempt,
+            reason: 'empty',
+            restartMarker,
+          });
         }
-      } catch {
+      } catch (error) {
         if (usageFetchGenerationRef.current !== generation) return;
+        trackUiEvent('models.token_usage_fetch_failed_attempt', {
+          generation,
+          attempt,
+          restartMarker,
+          message: error instanceof Error ? error.message : String(error),
+        });
         if (attempt < USAGE_FETCH_MAX_ATTEMPTS) {
+          trackUiEvent('models.token_usage_fetch_retry_scheduled', {
+            generation,
+            attempt,
+            reason: 'error',
+            restartMarker,
+          });
           usageFetchTimerRef.current = setTimeout(() => {
             void fetchUsageHistoryWithRetry(attempt + 1);
           }, USAGE_FETCH_RETRY_DELAY_MS);
           return;
         }
         setUsageHistory([]);
+        trackUiEvent('models.token_usage_fetch_exhausted', {
+          generation,
+          attempt,
+          reason: 'error',
+          restartMarker,
+        });
       }
     };
 
