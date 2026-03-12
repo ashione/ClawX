@@ -136,7 +136,7 @@ export function Models() {
         usageFetchTimerRef.current = null;
       }
     };
-  }, [isGatewayRunning, gatewayStatus.connectedAt, gatewayStatus.pid]);
+  }, [isGatewayRunning, gatewayStatus.connectedAt, gatewayStatus.pid, usageFetchMaxAttempts]);
 
   const visibleUsageHistory = isGatewayRunning ? usageHistory : [];
   const filteredUsageHistory = filterUsageHistoryByWindow(visibleUsageHistory, usageWindow);

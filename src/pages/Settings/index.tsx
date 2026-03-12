@@ -102,6 +102,7 @@ export function Settings() {
   const [logContent, setLogContent] = useState('');
   const [doctorRunningMode, setDoctorRunningMode] = useState<'diagnose' | 'fix' | null>(null);
   const [doctorResult, setDoctorResult] = useState<{
+    mode: 'diagnose' | 'fix';
     success: boolean;
     exitCode: number | null;
     stdout: string;
@@ -160,7 +161,7 @@ export function Settings() {
         toast.error(result.error || (mode === 'fix' ? t('developer.doctorFixFailed') : t('developer.doctorFailed')));
       }
     } catch (error) {
-      const message = toUserMessage(error, mode === 'fix' ? t('developer.doctorFixRunFailed') : t('developer.doctorRunFailed'));
+      const message = toUserMessage(error) || (mode === 'fix' ? t('developer.doctorFixRunFailed') : t('developer.doctorRunFailed'));
       toast.error(message);
       setDoctorResult({
         mode,
