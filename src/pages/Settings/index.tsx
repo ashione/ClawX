@@ -100,6 +100,18 @@ export function Settings() {
   const showCliTools = true;
   const [showLogs, setShowLogs] = useState(false);
   const [logContent, setLogContent] = useState('');
+  const [doctorRunningMode, setDoctorRunningMode] = useState<'diagnose' | 'fix' | null>(null);
+  const [doctorResult, setDoctorResult] = useState<{
+    success: boolean;
+    exitCode: number | null;
+    stdout: string;
+    stderr: string;
+    command: string;
+    cwd: string;
+    durationMs: number;
+    timedOut?: boolean;
+    error?: string;
+  } | null>(null);
 
   const handleShowLogs = async () => {
     try {
@@ -120,6 +132,72 @@ export function Settings() {
       }
     } catch {
       // ignore
+    }
+  };
+
+  const handleRunOpenClawDoctor = async (mode: 'diagnose' | 'fix') => {
+    setDoctorRunningMode(mode);
+    try {
+      const result = await hostApiFetch<{
+        mode: 'diagnose' | 'fix';
+        success: boolean;
+        exitCode: number | null;
+        stdout: string;
+        stderr: string;
+        command: string;
+        cwd: string;
+        durationMs: number;
+        timedOut?: boolean;
+        error?: string;
+      }>('/api/app/openclaw-doctor', {
+        method: 'POST',
+        body: JSON.stringify({ mode }),
+      });
+      setDoctorResult(result);
+      if (result.success) {
+        toast.success(mode === 'fix' ? t('developer.doctorFixSucceeded') : t('developer.doctorSucceeded'));
+      } else {
+        toast.error(result.error || (mode === 'fix' ? t('developer.doctorFixFailed') : t('developer.doctorFailed')));
+      }
+    } catch (error) {
+      const message = toUserMessage(error, mode === 'fix' ? t('developer.doctorFixRunFailed') : t('developer.doctorRunFailed'));
+      toast.error(message);
+      setDoctorResult({
+        mode,
+        success: false,
+        exitCode: null,
+        stdout: '',
+        stderr: '',
+        command: 'openclaw doctor --json',
+        cwd: '',
+        durationMs: 0,
+        error: message,
+      });
+    } finally {
+      setDoctorRunningMode(null);
+    }
+  };
+
+  const handleCopyDoctorOutput = async () => {
+    if (!doctorResult) return;
+    const payload = [
+      `command: ${doctorResult.command}`,
+      `cwd: ${doctorResult.cwd}`,
+      `exitCode: ${doctorResult.exitCode ?? 'null'}`,
+      `durationMs: ${doctorResult.durationMs}`,
+      '',
+      '[stdout]',
+      doctorResult.stdout.trim() || '(empty)',
+      '',
+      '[stderr]',
+      doctorResult.stderr.trim() || '(empty)',
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      toast.success(t('developer.doctorCopied'));
+    } catch (error) {
+      toast.error(`Failed to copy doctor output: ${String(error)}`);
     }
   };
 
@@ -736,6 +814,86 @@ export function Settings() {
                       </div>
                     </div>
                   )}
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label className="text-[14px] font-medium text-foreground">{t('developer.doctor')}</Label>
+                        <p className="text-[13px] text-muted-foreground mt-1">
+                          {t('developer.doctorDesc')}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void handleRunOpenClawDoctor('diagnose')}
+                          disabled={doctorRunningMode !== null}
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        >
+                          <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'diagnose' ? ' animate-spin' : ''}`} />
+                          {doctorRunningMode === 'diagnose' ? t('common:status.running') : t('developer.runDoctor')}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void handleRunOpenClawDoctor('fix')}
+                          disabled={doctorRunningMode !== null}
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        >
+                          <RefreshCw className={`h-4 w-4 mr-2${doctorRunningMode === 'fix' ? ' animate-spin' : ''}`} />
+                          {doctorRunningMode === 'fix' ? t('common:status.running') : t('developer.runDoctorFix')}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleCopyDoctorOutput}
+                          disabled={!doctorResult}
+                          className="rounded-xl h-10 px-4 bg-transparent border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5"
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          {t('common:actions.copy')}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {doctorResult && (
+                      <div className="space-y-3 rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-black/5 dark:bg-white/5">
+                        <div className="flex flex-wrap gap-2 text-[12px]">
+                          <Badge variant={doctorResult.success ? 'secondary' : 'destructive'} className="rounded-full px-3 py-1">
+                            {doctorResult.mode === 'fix'
+                              ? (doctorResult.success ? t('developer.doctorFixOk') : t('developer.doctorFixIssue'))
+                              : (doctorResult.success ? t('developer.doctorOk') : t('developer.doctorIssue'))}
+                          </Badge>
+                          <Badge variant="outline" className="rounded-full px-3 py-1">
+                            {t('developer.doctorExitCode')}: {doctorResult.exitCode ?? 'null'}
+                          </Badge>
+                          <Badge variant="outline" className="rounded-full px-3 py-1">
+                            {t('developer.doctorDuration')}: {Math.round(doctorResult.durationMs)}ms
+                          </Badge>
+                        </div>
+                        <div className="space-y-1 text-[12px] text-muted-foreground font-mono break-all">
+                          <p>{t('developer.doctorCommand')}: {doctorResult.command}</p>
+                          <p>{t('developer.doctorWorkingDir')}: {doctorResult.cwd || '-'}</p>
+                          {doctorResult.error && <p>{t('developer.doctorError')}: {doctorResult.error}</p>}
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <p className="text-[12px] font-semibold text-foreground/80">{t('developer.doctorStdout')}</p>
+                            <pre className="max-h-72 overflow-auto rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-card p-3 text-[11px] font-mono whitespace-pre-wrap break-words">
+                              {doctorResult.stdout.trim() || t('developer.doctorOutputEmpty')}
+                            </pre>
+                          </div>
+                          <div className="space-y-2">
+                            <p className="text-[12px] font-semibold text-foreground/80">{t('developer.doctorStderr')}</p>
+                            <pre className="max-h-72 overflow-auto rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-card p-3 text-[11px] font-mono whitespace-pre-wrap break-words">
+                              {doctorResult.stderr.trim() || t('developer.doctorOutputEmpty')}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="space-y-4">
                     <div className="flex items-center justify-between rounded-2xl border border-black/10 dark:border-white/10 p-5 bg-transparent">

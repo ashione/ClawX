@@ -12,25 +12,15 @@ import { hostApiFetch } from '@/lib/host-api';
 import { trackUiEvent } from '@/lib/telemetry';
 import { ProvidersSettings } from '@/components/settings/ProvidersSettings';
 import { FeedbackState } from '@/components/common/FeedbackState';
-
-type UsageHistoryEntry = {
-  timestamp: string;
-  sessionId: string;
-  agentId: string;
-  model?: string;
-  provider?: string;
-  content?: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  totalTokens: number;
-  costUsd?: number;
-};
-
-type UsageWindow = '7d' | '30d' | 'all';
-type UsageGroupBy = 'model' | 'day';
-const USAGE_FETCH_MAX_ATTEMPTS = 6;
+import {
+  filterUsageHistoryByWindow,
+  groupUsageHistory,
+  type UsageGroupBy,
+  type UsageHistoryEntry,
+  type UsageWindow,
+} from './usage-history';
+const DEFAULT_USAGE_FETCH_MAX_ATTEMPTS = 6;
+const WINDOWS_USAGE_FETCH_MAX_ATTEMPTS = 10;
 const USAGE_FETCH_RETRY_DELAY_MS = 1500;
 
 export function Models() {
@@ -38,6 +28,9 @@ export function Models() {
   const gatewayStatus = useGatewayStore((state) => state.status);
   const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
   const isGatewayRunning = gatewayStatus.state === 'running';
+  const usageFetchMaxAttempts = window.electron.platform === 'win32'
+    ? WINDOWS_USAGE_FETCH_MAX_ATTEMPTS
+    : DEFAULT_USAGE_FETCH_MAX_ATTEMPTS;
 
   const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>([]);
   const [usageGroupBy, setUsageGroupBy] = useState<UsageGroupBy>('model');
@@ -87,7 +80,7 @@ export function Models() {
           restartMarker,
         });
 
-        if (normalized.length === 0 && attempt < USAGE_FETCH_MAX_ATTEMPTS) {
+        if (normalized.length === 0 && attempt < usageFetchMaxAttempts) {
           trackUiEvent('models.token_usage_fetch_retry_scheduled', {
             generation,
             attempt,
@@ -113,7 +106,7 @@ export function Models() {
           restartMarker,
           message: error instanceof Error ? error.message : String(error),
         });
-        if (attempt < USAGE_FETCH_MAX_ATTEMPTS) {
+        if (attempt < usageFetchMaxAttempts) {
           trackUiEvent('models.token_usage_fetch_retry_scheduled', {
             generation,
             attempt,
@@ -381,84 +374,6 @@ function formatUsageTimestamp(timestamp: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
-}
-
-function groupUsageHistory(
-  entries: UsageHistoryEntry[],
-  groupBy: UsageGroupBy,
-): Array<{
-  label: string;
-  totalTokens: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheTokens: number;
-  sortKey: number | string;
-}> {
-  const grouped = new Map<string, {
-    label: string;
-    totalTokens: number;
-    inputTokens: number;
-    outputTokens: number;
-    cacheTokens: number;
-    sortKey: number | string;
-  }>();
-
-  for (const entry of entries) {
-    const label = groupBy === 'model'
-      ? (entry.model || 'Unknown')
-      : formatUsageDay(entry.timestamp);
-    const current = grouped.get(label) ?? {
-      label,
-      totalTokens: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheTokens: 0,
-      sortKey: groupBy === 'day' ? getUsageDaySortKey(entry.timestamp) : label.toLowerCase(),
-    };
-    current.totalTokens += entry.totalTokens;
-    current.inputTokens += entry.inputTokens;
-    current.outputTokens += entry.outputTokens;
-    current.cacheTokens += entry.cacheReadTokens + entry.cacheWriteTokens;
-    grouped.set(label, current);
-  }
-
-  return Array.from(grouped.values())
-    .sort((a, b) => {
-      if (groupBy === 'day') {
-        return Number(a.sortKey) - Number(b.sortKey);
-      }
-      return b.totalTokens - a.totalTokens;
-    })
-    .slice(0, 8);
-}
-
-function formatUsageDay(timestamp: string): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return timestamp;
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-  }).format(date);
-}
-
-function getUsageDaySortKey(timestamp: string): number {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return 0;
-  date.setHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-function filterUsageHistoryByWindow(entries: UsageHistoryEntry[], window: UsageWindow): UsageHistoryEntry[] {
-  if (window === 'all') return entries;
-
-  const now = Date.now();
-  const days = window === '7d' ? 7 : 30;
-  const cutoff = now - days * 24 * 60 * 60 * 1000;
-
-  return entries.filter((entry) => {
-    const timestamp = Date.parse(entry.timestamp);
-    return Number.isFinite(timestamp) && timestamp >= cutoff;
-  });
 }
 
 function UsageBarChart({
