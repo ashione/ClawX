@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-03-14T13:50:33.172Z",
+  "scenario": "all",
+  "scenarios": {
+    "gateway-restart-during-run": {
+      "duplicate_event_rate": 0.25,
+      "event_fanout_ratio": 1.3333333333333333,
+      "history_inflight_max": 1,
+      "history_load_qps": 0.4166666666666667,
+      "rpc_p50_ms": 240,
+      "rpc_p95_ms": 240,
+      "rpc_timeout_rate": 0,
+      "gateway_reconnect_count": 1,
+      "message_loss_count": 0,
+      "message_order_violation_count": 0,
+      "_meta": {
+        "duration_sec": 2.4,
+        "total_gateway_events": 4,
+        "unique_gateway_events": 3,
+        "total_rpc_calls": 1
+      }
+    },
+    "happy-path-chat": {
+      "duplicate_event_rate": 0,
+      "event_fanout_ratio": 1,
+      "history_inflight_max": 1,
+      "history_load_qps": 0.2857142857142857,
+      "rpc_p50_ms": 180,
+      "rpc_p95_ms": 180,
+      "rpc_timeout_rate": 0,
+      "gateway_reconnect_count": 0,
+      "message_loss_count": 0,
+      "message_order_violation_count": 0,
+      "_meta": {
+        "duration_sec": 3.5,
+        "total_gateway_events": 3,
+        "unique_gateway_events": 3,
+        "total_rpc_calls": 1
+      }
+    },
+    "network-degraded": {
+      "duplicate_event_rate": 0,
+      "event_fanout_ratio": 1,
+      "history_inflight_max": 1,
+      "history_load_qps": 0.35714285714285715,
+      "rpc_p50_ms": 420,
+      "rpc_p95_ms": 820,
+      "rpc_timeout_rate": 0.5,
+      "gateway_reconnect_count": 1,
+      "message_loss_count": 0,
+      "message_order_violation_count": 0,
+      "_meta": {
+        "duration_sec": 2.8,
+        "total_gateway_events": 3,
+        "unique_gateway_events": 3,
+        "total_rpc_calls": 2
+      }
+    }
+  },
+  "aggregate": {
+    "duplicate_event_rate": 0.08333333333333333,
+    "event_fanout_ratio": 1.111111111111111,
+    "history_inflight_max": 1,
+    "history_load_qps": 0.3531746031746032,
+    "rpc_p50_ms": 280,
+    "rpc_p95_ms": 413.3333333333333,
+    "rpc_timeout_rate": 0.16666666666666666,
+    "gateway_reconnect_count": 2,
+    "message_loss_count": 0,
+    "message_order_violation_count": 0
+  }
+}

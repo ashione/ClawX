@@ -1159,13 +1159,18 @@ function registerGatewayHandlers(
 
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const response = await proxyAwareFetch(`http://127.0.0.1:${port}${path}`, {
-        method,
-        headers,
-        body,
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
+      const response = await (async () => {
+        try {
+          return await proxyAwareFetch(`http://127.0.0.1:${port}${path}`, {
+            method,
+            headers,
+            body,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+      })();
 
       const contentType = (response.headers.get('content-type') || '').toLowerCase();
       if (contentType.includes('application/json')) {
@@ -1350,6 +1355,8 @@ function registerGatewayHandlers(
  * For checking package status and channel configuration
  */
 function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
+  const forceRestartChannels = new Set(['dingtalk', 'wecom', 'feishu', 'whatsapp']);
+
   const scheduleGatewayChannelRestart = (reason: string): void => {
     if (gatewayManager.getStatus().state !== 'stopped') {
       logger.info(`Scheduling Gateway restart after ${reason}`);
@@ -1357,6 +1364,20 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
     } else {
       logger.info(`Gateway is stopped; skip immediate restart after ${reason}`);
     }
+  };
+
+  const scheduleGatewayChannelSaveRefresh = (channelType: string, reason: string): void => {
+    if (gatewayManager.getStatus().state === 'stopped') {
+      logger.info(`Gateway is stopped; skip immediate refresh after ${reason}`);
+      return;
+    }
+    if (forceRestartChannels.has(channelType)) {
+      logger.info(`Scheduling Gateway restart after ${reason}`);
+      gatewayManager.debouncedRestart();
+      return;
+    }
+    logger.info(`Scheduling Gateway reload after ${reason}`);
+    gatewayManager.debouncedReload();
   };
 
   // ── Generic plugin installer with version-aware upgrades ─────────
@@ -1517,7 +1538,7 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
           };
         }
         await saveChannelConfig(channelType, config);
-        scheduleGatewayChannelRestart(`channel:saveConfig (${channelType})`);
+        scheduleGatewayChannelSaveRefresh(channelType, `channel:saveConfig (${channelType})`);
         return {
           success: true,
           pluginInstalled: installResult.installed,
@@ -1533,7 +1554,7 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
           };
         }
         await saveChannelConfig(channelType, config);
-        scheduleGatewayChannelRestart(`channel:saveConfig (${channelType})`);
+        scheduleGatewayChannelSaveRefresh(channelType, `channel:saveConfig (${channelType})`);
         return {
           success: true,
           pluginInstalled: installResult.installed,
@@ -1549,12 +1570,7 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
           };
         }
         await saveChannelConfig(channelType, config);
-        if (gatewayManager.getStatus().state !== 'stopped') {
-          logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType})`);
-          gatewayManager.debouncedReload();
-        } else {
-          logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType})`);
-        }
+        scheduleGatewayChannelSaveRefresh(channelType, `channel:saveConfig (${channelType})`);
         return {
           success: true,
           pluginInstalled: installResult.installed,
@@ -1570,7 +1586,7 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
           };
         }
         await saveChannelConfig(channelType, config);
-        scheduleGatewayChannelRestart(`channel:saveConfig (${channelType})`);
+        scheduleGatewayChannelSaveRefresh(channelType, `channel:saveConfig (${channelType})`);
         return {
           success: true,
           pluginInstalled: installResult.installed,
@@ -1578,7 +1594,7 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
         };
       }
       await saveChannelConfig(channelType, config);
-      scheduleGatewayChannelRestart(`channel:saveConfig (${channelType})`);
+      scheduleGatewayChannelSaveRefresh(channelType, `channel:saveConfig (${channelType})`);
       return { success: true };
     } catch (error) {
       console.error('Failed to save channel config:', error);
@@ -1777,10 +1793,8 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
   };
 
   // Listen for OAuth success to automatically restart the Gateway with new tokens/configs.
-  // Use a longer debounce (8s) so that provider:setDefault — which writes the full config
-  // and then calls debouncedRestart(2s) — has time to fire and coalesce into a single
-  // restart.  Without this, the OAuth restart fires first with stale config, and the
-  // subsequent provider:setDefault restart is deferred and dropped.
+  // Keep a longer debounce (8s) so provider config writes and OAuth token persistence
+  // can settle before applying the process-level refresh.
   deviceOAuthManager.on('oauth:success', ({ provider, accountId }) => {
     logger.info(`[IPC] Scheduling Gateway restart after ${provider} OAuth success for ${accountId}...`);
     gatewayManager.debouncedRestart(8000);

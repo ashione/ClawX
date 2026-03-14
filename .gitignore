@@ -59,6 +59,7 @@ resources/bin
 *.key
 
 build/
+artifacts/
 
 .cursor/
 .pnpm-store/

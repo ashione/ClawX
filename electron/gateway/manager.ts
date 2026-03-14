@@ -9,6 +9,7 @@ import WebSocket from 'ws';
 import { PORTS } from '../utils/config';
 import { JsonRpcNotification, isNotification, isResponse } from './protocol';
 import { logger } from '../utils/logger';
+import { captureTelemetryEvent, trackMetric } from '../utils/telemetry';
 import {
   loadOrCreateDeviceIdentity,
   type DeviceIdentity,
@@ -95,6 +96,10 @@ export class GatewayManager extends EventEmitter {
   private readonly restartController = new GatewayRestartController();
   private reloadDebounceTimer: NodeJS.Timeout | null = null;
   private externalShutdownSupported: boolean | null = null;
+  private lastRestartAt = 0;
+  private reconnectAttemptsTotal = 0;
+  private reconnectSuccessTotal = 0;
+  private static readonly RESTART_COOLDOWN_MS = 2500;
 
   constructor(config?: Partial<ReconnectConfig>) {
     super();
@@ -348,7 +353,18 @@ export class GatewayManager extends EventEmitter {
       return;
     }
 
-    logger.debug('Gateway restart requested');
+    const now = Date.now();
+    const sinceLastRestart = now - this.lastRestartAt;
+    if (sinceLastRestart < GatewayManager.RESTART_COOLDOWN_MS) {
+      logger.info(
+        `Gateway restart skipped due to cooldown (${sinceLastRestart}ms < ${GatewayManager.RESTART_COOLDOWN_MS}ms)`,
+      );
+      return;
+    }
+
+    const pidBefore = this.status.pid;
+    logger.info(`[gateway-refresh] mode=restart requested pidBefore=${pidBefore ?? 'n/a'}`);
+    this.lastRestartAt = now;
     this.restartInFlight = (async () => {
       await this.stop();
       await this.start();
@@ -356,6 +372,9 @@ export class GatewayManager extends EventEmitter {
 
     try {
       await this.restartInFlight;
+      logger.info(
+        `[gateway-refresh] mode=restart result=applied pidBefore=${pidBefore ?? 'n/a'} pidAfter=${this.status.pid ?? 'n/a'}`,
+      );
     } finally {
       this.restartInFlight = null;
       this.restartController.flushDeferredRestart(
@@ -405,13 +424,18 @@ export class GatewayManager extends EventEmitter {
       return;
     }
 
+    const pidBefore = this.process?.pid;
+    logger.info(`[gateway-refresh] mode=reload requested pid=${pidBefore ?? 'n/a'} state=${this.status.state}`);
+
     if (!this.process?.pid || this.status.state !== 'running') {
+      logger.warn('[gateway-refresh] mode=reload result=fallback_restart cause=not_running');
       logger.warn('Gateway reload requested while not running; falling back to restart');
       await this.restart();
       return;
     }
 
     if (process.platform === 'win32') {
+      logger.warn('[gateway-refresh] mode=reload result=fallback_restart cause=windows');
       logger.debug('Windows detected, falling back to Gateway restart for reload');
       await this.restart();
       return;
@@ -423,6 +447,9 @@ export class GatewayManager extends EventEmitter {
 
     // Avoid signaling a process that just came up; it will already read latest config.
     if (connectedForMs < 8000) {
+      logger.info(
+        `[gateway-refresh] mode=reload result=skipped_recent_connect connectedForMs=${connectedForMs} pid=${this.process.pid}`,
+      );
       logger.info(`Gateway connected ${connectedForMs}ms ago, skipping reload signal`);
       return;
     }
@@ -434,10 +461,17 @@ export class GatewayManager extends EventEmitter {
       // If process state doesn't recover quickly, fall back to restart.
       await new Promise((resolve) => setTimeout(resolve, 1500));
       if (this.status.state !== 'running' || !this.process?.pid) {
+        logger.warn('[gateway-refresh] mode=reload result=fallback_restart cause=post_signal_unhealthy');
         logger.warn('Gateway did not stay running after reload signal, falling back to restart');
         await this.restart();
+      } else {
+        const pidAfter = this.process.pid;
+        logger.info(
+          `[gateway-refresh] mode=reload result=applied_in_place pidBefore=${pidBefore} pidAfter=${pidAfter}`,
+        );
       }
     } catch (error) {
+      logger.warn('[gateway-refresh] mode=reload result=fallback_restart cause=signal_error');
       logger.warn('Gateway reload signal failed, falling back to restart:', error);
       await this.restart();
     }
@@ -731,9 +765,11 @@ export class GatewayManager extends EventEmitter {
       return;
     }
 
+    const cooldownRemaining = Math.max(0, GatewayManager.RESTART_COOLDOWN_MS - (Date.now() - this.lastRestartAt));
     const { delay, nextAttempt, maxAttempts } = decision;
+    const effectiveDelay = Math.max(delay, cooldownRemaining);
     this.reconnectAttempts = nextAttempt;
-    logger.warn(`Scheduling Gateway reconnect attempt ${nextAttempt}/${maxAttempts} in ${delay}ms`);
+    logger.warn(`Scheduling Gateway reconnect attempt ${nextAttempt}/${maxAttempts} in ${effectiveDelay}ms`);
 
     this.setStatus({
       state: 'reconnecting',
@@ -752,16 +788,58 @@ export class GatewayManager extends EventEmitter {
         logger.debug(`Skipping reconnect attempt: ${skipReason}`);
         return;
       }
+      const attemptNo = this.reconnectAttempts;
+      this.reconnectAttemptsTotal += 1;
       try {
         // Use the guarded start() flow so reconnect attempts cannot bypass
         // lifecycle locking and accidentally start duplicate Gateway processes.
         await this.start();
+        this.reconnectSuccessTotal += 1;
+        this.emitReconnectMetric('success', {
+          attemptNo,
+          maxAttempts,
+          delayMs: effectiveDelay,
+        });
         this.reconnectAttempts = 0;
       } catch (error) {
         logger.error('Gateway reconnection attempt failed:', error);
+        this.emitReconnectMetric('failure', {
+          attemptNo,
+          maxAttempts,
+          delayMs: effectiveDelay,
+          error: error instanceof Error ? error.message : String(error),
+        });
         this.scheduleReconnect();
       }
-    }, delay);
+    }, effectiveDelay);
+  }
+
+  private emitReconnectMetric(
+    outcome: 'success' | 'failure',
+    payload: {
+      attemptNo: number;
+      maxAttempts: number;
+      delayMs: number;
+      error?: string;
+    },
+  ): void {
+    const successRate = this.reconnectAttemptsTotal > 0
+      ? this.reconnectSuccessTotal / this.reconnectAttemptsTotal
+      : 0;
+
+    const properties = {
+      outcome,
+      attemptNo: payload.attemptNo,
+      maxAttempts: payload.maxAttempts,
+      delayMs: payload.delayMs,
+      gateway_reconnect_success_count: this.reconnectSuccessTotal,
+      gateway_reconnect_attempt_count: this.reconnectAttemptsTotal,
+      gateway_reconnect_success_rate: Number(successRate.toFixed(4)),
+      ...(payload.error ? { error: payload.error } : {}),
+    };
+
+    trackMetric('gateway.reconnect', properties);
+    captureTelemetryEvent('gateway_reconnect', properties);
   }
 
   /**

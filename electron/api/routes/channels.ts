@@ -12,7 +12,7 @@ import {
   validateChannelConfig,
   validateChannelCredentials,
 } from '../../utils/channel-config';
-import { clearAllBindingsForChannel } from '../../utils/agent-config';
+import { assignChannelToAgent, clearAllBindingsForChannel } from '../../utils/agent-config';
 import { whatsAppLoginManager } from '../../utils/whatsapp-login';
 import type { HostApiContext } from '../context';
 import { parseJsonBody, sendJson } from '../route-utils';
@@ -22,6 +22,25 @@ function scheduleGatewayChannelRestart(ctx: HostApiContext, reason: string): voi
     return;
   }
   ctx.gatewayManager.debouncedRestart();
+  void reason;
+}
+
+const FORCE_RESTART_CHANNELS = new Set(['dingtalk', 'wecom', 'feishu', 'whatsapp']);
+
+function scheduleGatewayChannelSaveRefresh(
+  ctx: HostApiContext,
+  channelType: string,
+  reason: string,
+): void {
+  if (ctx.gatewayManager.getStatus().state === 'stopped') {
+    return;
+  }
+  if (FORCE_RESTART_CHANNELS.has(channelType)) {
+    ctx.gatewayManager.debouncedRestart();
+    void reason;
+    return;
+  }
+  ctx.gatewayManager.debouncedReload();
   void reason;
 }
 
@@ -119,6 +138,49 @@ function ensureQQBotPluginInstalled(): { installed: boolean; warning?: string } 
   return ensurePluginInstalled('qqbot', buildCandidateSources('qqbot'), 'QQ Bot');
 }
 
+function toComparableConfig(input: Record<string, unknown>): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string') {
+      next[key] = value.trim();
+      continue;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      next[key] = String(value);
+    }
+  }
+  return next;
+}
+
+function isSameConfigValues(
+  existing: Record<string, string> | undefined,
+  incoming: Record<string, unknown>,
+): boolean {
+  if (!existing) return false;
+  const next = toComparableConfig(incoming);
+  const keys = new Set([...Object.keys(existing), ...Object.keys(next)]);
+  if (keys.size === 0) return false;
+  for (const key of keys) {
+    if ((existing[key] ?? '') !== (next[key] ?? '')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function inferAgentIdFromAccountId(accountId: string): string {
+  if (accountId === 'default') return 'main';
+  return accountId;
+}
+
+async function ensureScopedChannelBinding(channelType: string, accountId?: string): Promise<void> {
+  // Multi-agent safety: only bind when the caller explicitly scopes the account.
+  // Global channel saves (no accountId) must not override routing to "main".
+  if (!accountId) return;
+  await assignChannelToAgent(inferAgentIdFromAccountId(accountId), channelType).catch(() => undefined);
+}
+
 export async function handleChannelRoutes(
   req: IncomingMessage,
   res: ServerResponse,
@@ -202,8 +264,15 @@ export async function handleChannelRoutes(
           return true;
         }
       }
+      const existingValues = await getChannelFormValues(body.channelType, body.accountId);
+      if (isSameConfigValues(existingValues, body.config)) {
+        await ensureScopedChannelBinding(body.channelType, body.accountId);
+        sendJson(res, 200, { success: true, noChange: true });
+        return true;
+      }
       await saveChannelConfig(body.channelType, body.config, body.accountId);
-      scheduleGatewayChannelRestart(ctx, `channel:saveConfig:${body.channelType}`);
+      await ensureScopedChannelBinding(body.channelType, body.accountId);
+      scheduleGatewayChannelSaveRefresh(ctx, body.channelType, `channel:saveConfig:${body.channelType}`);
       sendJson(res, 200, { success: true });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });
