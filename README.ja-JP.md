@@ -314,6 +314,9 @@ pnpm typecheck            # TypeScriptの型チェック
 
 # テスト
 pnpm test                 # ユニットテストを実行
+pnpm run comms:replay     # 通信リプレイ指標を算出
+pnpm run comms:baseline   # 通信ベースラインを更新
+pnpm run comms:compare    # リプレイ指標をベースライン閾値と比較
 
 # ビルド＆パッケージ
 pnpm run build:vite       # フロントエンドのみビルド
@@ -323,6 +326,17 @@ pnpm package:mac          # macOS向けにパッケージ化
 pnpm package:win          # Windows向けにパッケージ化
 pnpm package:linux        # Linux向けにパッケージ化
 ```
+
+### 通信回帰チェック
+
+PR が通信経路（Gateway イベント、Chat 送受信フロー、Channel 配信、トランスポートのフォールバック）に触れる場合は、次を実行してください。
+
+```bash
+pnpm run comms:replay
+pnpm run comms:compare
+```
+
+CI の `comms-regression` が必須シナリオと閾値を検証します。
 ### 技術スタック
 
 | レイヤー | 技術 |

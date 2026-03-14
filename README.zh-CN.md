@@ -318,6 +318,9 @@ pnpm typecheck            # TypeScript 类型检查
 
 # 测试
 pnpm test                 # 运行单元测试
+pnpm run comms:replay     # 计算通信回放指标
+pnpm run comms:baseline   # 刷新通信基线快照
+pnpm run comms:compare    # 将回放指标与基线阈值对比
 
 # 构建与打包
 pnpm run build:vite       # 仅构建前端
@@ -327,6 +330,17 @@ pnpm package:mac          # 为 macOS 打包
 pnpm package:win          # 为 Windows 打包
 pnpm package:linux        # 为 Linux 打包
 ```
+
+### 通信回归检查
+
+当 PR 涉及通信链路（Gateway 事件、Chat 收发流程、Channel 投递、传输回退）时，建议执行：
+
+```bash
+pnpm run comms:replay
+pnpm run comms:compare
+```
+
+CI 中的 `comms-regression` 会校验必选场景与阈值。
 ### 技术栈
 
 | 层级 | 技术 |

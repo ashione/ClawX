@@ -318,6 +318,9 @@ pnpm typecheck            # TypeScript validation
 
 # Testing
 pnpm test                 # Run unit tests
+pnpm run comms:replay     # Compute communication replay metrics
+pnpm run comms:baseline   # Refresh communication baseline snapshot
+pnpm run comms:compare    # Compare replay metrics against baseline thresholds
 
 # Build & Package
 pnpm run build:vite       # Build frontend only
@@ -327,6 +330,17 @@ pnpm package:mac          # Package for macOS
 pnpm package:win          # Package for Windows
 pnpm package:linux        # Package for Linux
 ```
+
+### Communication Regression Checks
+
+When a PR changes communication paths (gateway events, chat runtime send/receive flow, channel delivery, or transport fallback), run:
+
+```bash
+pnpm run comms:replay
+pnpm run comms:compare
+```
+
+`comms-regression` in CI enforces required scenarios and threshold checks.
 ### Tech Stack
 
 | Layer | Technology |
