@@ -52,6 +52,15 @@ vi.mock('@electron/utils/openclaw-auth', () => ({
   updateAgentModelProvider: mocks.updateAgentModelProvider,
 }));
 
+vi.mock('@electron/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 import {
   syncDefaultProviderToRuntime,
   syncDeletedProviderToRuntime,
