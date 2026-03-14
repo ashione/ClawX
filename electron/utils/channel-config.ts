@@ -49,6 +49,10 @@ async function fileExists(p: string): Promise<boolean> {
     try { await access(p, constants.F_OK); return true; } catch { return false; }
 }
 
+function normalizeCredentialValue(value: string): string {
+    return value.trim();
+}
+
 // ── Types ────────────────────────────────────────────────────────
 
 export interface ChannelConfigData {
@@ -350,7 +354,16 @@ function assertNoDuplicateCredential(
     if (!uniqueKey) return;
 
     const incomingValue = config[uniqueKey];
-    if (!incomingValue || typeof incomingValue !== 'string') return;
+    if (typeof incomingValue !== 'string') return;
+    const normalizedIncomingValue = normalizeCredentialValue(incomingValue);
+    if (!normalizedIncomingValue) return;
+    if (normalizedIncomingValue !== incomingValue) {
+        logger.warn('Normalized channel credential value for duplicate check', {
+            channelType,
+            accountId: resolvedAccountId,
+            key: uniqueKey,
+        });
+    }
 
     const accounts = channelSection.accounts as Record<string, ChannelConfigData> | undefined;
     if (!accounts) return;
@@ -359,9 +372,12 @@ function assertNoDuplicateCredential(
         if (existingAccountId === resolvedAccountId) continue;
         if (!accountCfg || typeof accountCfg !== 'object') continue;
         const existingValue = accountCfg[uniqueKey];
-        if (typeof existingValue === 'string' && existingValue === incomingValue) {
+        if (
+            typeof existingValue === 'string'
+            && normalizeCredentialValue(existingValue) === normalizedIncomingValue
+        ) {
             throw new Error(
-                `The ${channelType} bot (${uniqueKey}: ${incomingValue}) is already bound to another agent (account: ${existingAccountId}). ` +
+                `The ${channelType} bot (${uniqueKey}: ${normalizedIncomingValue}) is already bound to another agent (account: ${existingAccountId}). ` +
                 `Each agent must use a unique bot.`,
             );
         }
@@ -416,6 +432,19 @@ export async function saveChannelConfig(
 
         const existingAccountConfig = resolveAccountConfig(channelSection, resolvedAccountId);
         const transformedConfig = transformChannelConfig(channelType, config, existingAccountConfig);
+        const uniqueKey = CHANNEL_UNIQUE_CREDENTIAL_KEY[channelType];
+        if (uniqueKey && typeof transformedConfig[uniqueKey] === 'string') {
+            const rawCredentialValue = transformedConfig[uniqueKey] as string;
+            const normalizedCredentialValue = normalizeCredentialValue(rawCredentialValue);
+            if (normalizedCredentialValue !== rawCredentialValue) {
+                logger.warn('Normalizing channel credential value before save', {
+                    channelType,
+                    accountId: resolvedAccountId,
+                    key: uniqueKey,
+                });
+                transformedConfig[uniqueKey] = normalizedCredentialValue;
+            }
+        }
 
         // Write credentials into accounts.<accountId>
         if (!channelSection.accounts || typeof channelSection.accounts !== 'object') {
