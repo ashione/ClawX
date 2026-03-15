@@ -69,4 +69,38 @@ describe('GatewayRestartGovernor', () => {
     const allowedAfterStable = governor.decide(9000);
     expect(allowedAfterStable.allow).toBe(true);
   });
+
+  it('resets time-based state when clock moves backwards', () => {
+    const governor = new GatewayRestartGovernor({
+      maxRestartsPerWindow: 2,
+      windowMs: 60000,
+      baseCooldownMs: 1000,
+      maxCooldownMs: 8000,
+      stableResetMs: 60000,
+      circuitOpenMs: 30000,
+    });
+
+    governor.recordExecuted(10_000);
+    governor.recordExecuted(11_000);
+    const blocked = governor.decide(11_500);
+    expect(blocked.allow).toBe(false);
+
+    // Simulate clock rewind and verify stale guard state does not lock out restarts.
+    const afterRewind = governor.decide(9_000);
+    expect(afterRewind.allow).toBe(true);
+  });
+
+  it('wraps counters safely at MAX_SAFE_INTEGER', () => {
+    const governor = new GatewayRestartGovernor();
+    (governor as unknown as { executedTotal: number; suppressedTotal: number }).executedTotal = Number.MAX_SAFE_INTEGER;
+    (governor as unknown as { executedTotal: number; suppressedTotal: number }).suppressedTotal = Number.MAX_SAFE_INTEGER;
+
+    governor.recordExecuted(1000);
+    governor.decide(1000);
+
+    expect(governor.getCounters()).toEqual({
+      executedTotal: 0,
+      suppressedTotal: 0,
+    });
+  });
 });

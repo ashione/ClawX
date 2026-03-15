@@ -33,6 +33,7 @@ export class GatewayRestartGovernor {
   private lastRunningAt = 0;
   private suppressedTotal = 0;
   private executedTotal = 0;
+  private static readonly MAX_COUNTER = Number.MAX_SAFE_INTEGER;
 
   constructor(options?: Partial<RestartGovernorOptions>) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -47,7 +48,7 @@ export class GatewayRestartGovernor {
     this.maybeResetConsecutive(now);
 
     if (now < this.circuitOpenUntil) {
-      this.suppressedTotal += 1;
+      this.suppressedTotal = this.incrementCounter(this.suppressedTotal);
       return {
         allow: false,
         reason: 'circuit_open',
@@ -57,7 +58,7 @@ export class GatewayRestartGovernor {
 
     if (this.restartTimestamps.length >= this.options.maxRestartsPerWindow) {
       this.circuitOpenUntil = now + this.options.circuitOpenMs;
-      this.suppressedTotal += 1;
+      this.suppressedTotal = this.incrementCounter(this.suppressedTotal);
       return {
         allow: false,
         reason: 'budget_exceeded',
@@ -69,7 +70,7 @@ export class GatewayRestartGovernor {
     if (this.lastRestartAt > 0) {
       const sinceLast = now - this.lastRestartAt;
       if (sinceLast < requiredCooldown) {
-        this.suppressedTotal += 1;
+        this.suppressedTotal = this.incrementCounter(this.suppressedTotal);
         return {
           allow: false,
           reason: 'cooldown_active',
@@ -82,7 +83,7 @@ export class GatewayRestartGovernor {
   }
 
   recordExecuted(now = Date.now()): void {
-    this.executedTotal += 1;
+    this.executedTotal = this.incrementCounter(this.executedTotal);
     this.lastRestartAt = now;
     this.consecutiveRestarts += 1;
     this.restartTimestamps.push(now);
@@ -109,10 +110,24 @@ export class GatewayRestartGovernor {
   }
 
   private pruneOld(now: number): void {
+    // Detect time rewind (system clock moved backwards) and clear all
+    // time-based guard state to avoid stale lockouts.
+    if (this.restartTimestamps.length > 0 && now < this.restartTimestamps[this.restartTimestamps.length - 1]) {
+      this.restartTimestamps = [];
+      this.circuitOpenUntil = 0;
+      this.lastRestartAt = 0;
+      this.lastRunningAt = 0;
+      this.consecutiveRestarts = 0;
+      return;
+    }
     const threshold = now - this.options.windowMs;
     while (this.restartTimestamps.length > 0 && this.restartTimestamps[0] < threshold) {
       this.restartTimestamps.shift();
     }
   }
-}
 
+  private incrementCounter(current: number): number {
+    if (current >= GatewayRestartGovernor.MAX_COUNTER) return 0;
+    return current + 1;
+  }
+}

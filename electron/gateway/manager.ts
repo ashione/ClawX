@@ -104,6 +104,7 @@ export class GatewayManager extends EventEmitter {
   private reloadDebounceTimer: NodeJS.Timeout | null = null;
   private reloadPolicy: GatewayReloadPolicy = { ...DEFAULT_GATEWAY_RELOAD_POLICY };
   private reloadPolicyLoadedAt = 0;
+  private reloadPolicyRefreshPromise: Promise<void> | null = null;
   private externalShutdownSupported: boolean | null = null;
   private reconnectAttemptsTotal = 0;
   private reconnectSuccessTotal = 0;
@@ -546,9 +547,23 @@ export class GatewayManager extends EventEmitter {
     if (!force && now - this.reloadPolicyLoadedAt < GatewayManager.RELOAD_POLICY_REFRESH_MS) {
       return;
     }
-    this.reloadPolicyLoadedAt = now;
-    const nextPolicy = await loadGatewayReloadPolicy();
-    this.reloadPolicy = nextPolicy;
+
+    if (this.reloadPolicyRefreshPromise) {
+      await this.reloadPolicyRefreshPromise;
+      return;
+    }
+
+    this.reloadPolicyRefreshPromise = (async () => {
+      const nextPolicy = await loadGatewayReloadPolicy();
+      this.reloadPolicy = nextPolicy;
+      this.reloadPolicyLoadedAt = Date.now();
+    })();
+
+    try {
+      await this.reloadPolicyRefreshPromise;
+    } finally {
+      this.reloadPolicyRefreshPromise = null;
+    }
   }
 
   /**
