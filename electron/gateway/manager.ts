@@ -368,15 +368,17 @@ export class GatewayManager extends EventEmitter {
 
     const decision = this.restartGovernor.decide();
     if (!decision.allow) {
-      const counters = this.restartGovernor.getCounters();
+      const observability = this.restartGovernor.getObservability();
       logger.warn(
-        `[gateway-restart-governor] restart suppressed reason=${decision.reason} retryAfterMs=${decision.retryAfterMs}`,
+        `[gateway-restart-governor] restart suppressed reason=${decision.reason} retryAfterMs=${decision.retryAfterMs} ` +
+        `suppressed=${observability.suppressed_total} executed=${observability.executed_total} circuitOpenUntil=${observability.circuit_open_until}`,
       );
       const props = {
         reason: decision.reason,
         retry_after_ms: decision.retryAfterMs,
-        gateway_restart_suppressed_total: counters.suppressedTotal,
-        gateway_restart_executed_total: counters.executedTotal,
+        gateway_restart_suppressed_total: observability.suppressed_total,
+        gateway_restart_executed_total: observability.executed_total,
+        gateway_restart_circuit_open_until: observability.circuit_open_until,
       };
       trackMetric('gateway.restart.suppressed', props);
       captureTelemetryEvent('gateway_restart_suppressed', props);
@@ -393,15 +395,17 @@ export class GatewayManager extends EventEmitter {
     try {
       await this.restartInFlight;
       this.restartGovernor.recordExecuted();
-      const counters = this.restartGovernor.getCounters();
+      const observability = this.restartGovernor.getObservability();
       const props = {
-        gateway_restart_executed_total: counters.executedTotal,
-        gateway_restart_suppressed_total: counters.suppressedTotal,
+        gateway_restart_executed_total: observability.executed_total,
+        gateway_restart_suppressed_total: observability.suppressed_total,
+        gateway_restart_circuit_open_until: observability.circuit_open_until,
       };
       trackMetric('gateway.restart.executed', props);
       captureTelemetryEvent('gateway_restart_executed', props);
       logger.info(
-        `[gateway-refresh] mode=restart result=applied pidBefore=${pidBefore ?? 'n/a'} pidAfter=${this.status.pid ?? 'n/a'}`,
+        `[gateway-refresh] mode=restart result=applied pidBefore=${pidBefore ?? 'n/a'} pidAfter=${this.status.pid ?? 'n/a'} ` +
+        `suppressed=${observability.suppressed_total} executed=${observability.executed_total} circuitOpenUntil=${observability.circuit_open_until}`,
       );
     } finally {
       this.restartInFlight = null;
