@@ -978,7 +978,7 @@ export class GatewayManager extends EventEmitter {
     };
 
     trackMetric('gateway.reconnect', properties);
-    captureTelemetryEvent('gateway_reconnect', properties);
+    // Keep local metrics only; do not upload reconnect details to PostHog.
   }
 
   /**
