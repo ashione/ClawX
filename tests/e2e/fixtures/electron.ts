@@ -39,10 +39,14 @@ async function allocatePort(): Promise<number> {
 
 async function launchClawXElectron(homeDir: string, userDataDir: string): Promise<ElectronApplication> {
   const hostApiPort = await allocatePort();
+  const electronEnv = process.platform === 'linux'
+    ? { ELECTRON_DISABLE_SANDBOX: '1' }
+    : {};
   return await electron.launch({
     args: [electronEntry],
     env: {
       ...process.env,
+      ...electronEnv,
       HOME: homeDir,
       USERPROFILE: homeDir,
       APPDATA: join(homeDir, 'AppData', 'Roaming'),
