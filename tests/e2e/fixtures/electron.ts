@@ -1,3 +1,4 @@
+import electronBinaryPath from 'electron';
 import { _electron as electron, expect, test as base, type ElectronApplication, type Page } from '@playwright/test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
@@ -43,6 +44,7 @@ async function launchClawXElectron(homeDir: string, userDataDir: string): Promis
     ? { ELECTRON_DISABLE_SANDBOX: '1' }
     : {};
   return await electron.launch({
+    executablePath: electronBinaryPath,
     args: [electronEntry],
     env: {
       ...process.env,
@@ -88,11 +90,17 @@ export const test = base.extend<ElectronFixtures>({
 
   electronApp: async ({ launchElectronApp }, provideElectronApp) => {
     const app = await launchElectronApp();
+    let appClosed = false;
+    app.once('close', () => {
+      appClosed = true;
+    });
 
     try {
       await provideElectronApp(app);
     } finally {
-      await app.close();
+      if (!appClosed) {
+        await app.close().catch(() => {});
+      }
     }
   },
 
